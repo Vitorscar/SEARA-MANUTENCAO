@@ -1,0 +1,45 @@
+/* ==========================================================================
+   tokens.css — design tokens (cores, radius, sombras, fontes)
+   Não use valores hard-coded fora daqui.
+   ========================================================================== */
+
+:root{
+  /* Superfícies */
+  --bg:#F5F2EC;
+  --panel:#FFFFFF;
+  --panel-2:#FAF8F4;
+
+  /* Bordas */
+  --border:#E5DFD5;
+  --border-2:#D5CCBE;
+
+  /* Texto */
+  --text:#1A1614;
+  --muted:#6B6460;
+  --muted-2:#A39B94;
+
+  /* Marca Seara */
+  --red:#C8102E;
+  --red-dark:#8C0C21;
+  --red-dim:#FBE9EC;
+
+  --sun:#FDB913;
+  --sun-dark:#D89A00;
+  --sun-dim:#FFF6E0;
+
+  --amber:#C77700;
+  --amber-dim:#FFF1D9;
+
+  --green:#1E7A3D;
+  --green-dim:#E5F2E9;
+
+  --blue:#1D4ED8;
+  --blue-dim:#E4EBFD;
+
+  /* Forma */
+  --radius:12px;
+  --shadow:0 1px 2px rgba(26,22,20,.04), 0 4px 14px rgba(26,22,20,.06);
+
+  /* Tipografia mono */
+  --mono:ui-monospace,"SFMono-Regular","Cascadia Mono",Menlo,Consolas,monospace;
+}

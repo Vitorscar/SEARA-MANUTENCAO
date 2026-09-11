@@ -1,0 +1,16 @@
+/* ==========================================================================
+   components/_index.css — barrel de componentes
+   Cada arquivo cuida de UMA família de componentes reutilizáveis.
+   ========================================================================== */
+
+@import url("./chip.css");
+@import url("./card.css");
+@import url("./button.css");
+@import url("./form.css");
+@import url("./modal.css");
+@import url("./toast.css");
+@import url("./undo.css");
+@import url("./qr-overlay.css");
+@import url("./kanban.css");
+@import url("./anexos.css");
+@import url("./parada-detail.css");

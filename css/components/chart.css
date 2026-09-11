@@ -1,0 +1,272 @@
+/* ==========================================================================
+   chart.css — dashboard de relatórios
+   ========================================================================== */
+
+/* ---------- Grid geral ---------- */
+.charts-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:14px;
+  margin-top:8px;
+}
+@media (min-width:900px){
+  .charts-grid{grid-template-columns:repeat(2, 1fr);}
+  .chart-card.wide{grid-column:span 2;}
+}
+
+.chart-card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px;
+  box-shadow:var(--shadow);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.chart-card-head{
+  display:flex; justify-content:space-between; align-items:baseline;
+  gap:8px; flex-wrap:wrap;
+}
+.chart-card-title{
+  font-size:12px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em;
+  color:var(--muted);
+}
+.chart-card-sub{
+  font-size:11.5px; color:var(--muted-2); font-weight:600;
+}
+.chart-empty{
+  display:flex; align-items:center; justify-content:center;
+  min-height:140px;
+  color:var(--muted-2); font-size:12.5px;
+  background:var(--panel-2);
+  border-radius:8px;
+  border:1px dashed var(--border);
+}
+
+.chart-svg{
+  width:100%;
+  height:auto;
+  max-height:260px;
+  display:block;
+}
+
+/* ---------- Tendência ---------- */
+.chart-tendencia{width:100%;}
+.chart-legend-top{
+  display:flex; gap:16px; flex-wrap:wrap;
+  margin-bottom:8px;
+}
+.legend-inline{
+  display:flex; align-items:center; gap:6px;
+  font-size:11.5px; font-weight:600;
+  color:var(--muted);
+}
+.legend-bar{
+  width:14px; height:3px; border-radius:2px;
+}
+
+/* ---------- Heatmap ---------- */
+.heatmap{width:100%;}
+.heatmap-grid{
+  display:grid;
+  grid-template-columns:auto repeat(7, 1fr);
+  gap:4px;
+  align-items:center;
+}
+.heatmap-corner{width:60px;}
+.heatmap-dow{
+  text-align:center;
+  font-size:10.5px; font-weight:800;
+  color:var(--muted);
+  padding:4px 0;
+  text-transform:uppercase;
+  letter-spacing:.02em;
+}
+.heatmap-turno{
+  font-size:11px; font-weight:700;
+  color:var(--ink-soft);
+  padding-right:8px;
+  text-align:right;
+  white-space:nowrap;
+}
+.heatmap-cell{
+  aspect-ratio:1;
+  min-height:32px;
+  border-radius:6px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:11.5px;
+  font-weight:800;
+  border:1px solid var(--border);
+  transition:transform .12s;
+  cursor:default;
+}
+.heatmap-cell:hover{
+  transform:scale(1.08);
+  border-color:var(--red);
+  z-index:1;
+}
+.heatmap-scale{
+  display:flex; align-items:center; gap:6px;
+  justify-content:flex-end;
+  margin-top:12px;
+  font-size:10.5px; color:var(--muted);
+}
+.heatmap-dot{
+  width:14px; height:14px; border-radius:4px;
+}
+.heatmap-lbl{font-weight:700;}
+
+@media (max-width:640px){
+  .heatmap-grid{gap:3px;}
+  .heatmap-dow{font-size:9px;}
+  .heatmap-turno{font-size:10px; padding-right:4px;}
+  .heatmap-corner{width:44px;}
+  .heatmap-cell{min-height:26px; font-size:10.5px;}
+}
+
+/* ---------- Ranking ---------- */
+.chart-ranking{
+  display:flex; flex-direction:column; gap:14px;
+}
+.rank-row{
+  display:grid;
+  grid-template-columns:26px 1fr;
+  gap:10px;
+  align-items:flex-start;
+}
+.rank-pos{
+  width:26px; height:26px; border-radius:50%;
+  background:var(--red-dim); color:var(--red);
+  font-weight:900; font-size:12px;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.rank-body{min-width:0;}
+.rank-head{
+  display:flex; justify-content:space-between; align-items:baseline;
+  gap:8px; margin-bottom:5px;
+}
+.rank-name{
+  font-size:13px; font-weight:700;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  min-width:0;
+}
+.rank-val{
+  font-family:var(--mono);
+  font-size:12.5px; font-weight:800;
+  color:var(--ink);
+  white-space:nowrap;
+  text-align:right;
+}
+.rank-val small{
+  display:block;
+  font-size:10px; color:var(--muted);
+  font-weight:600;
+  font-family:inherit;
+  margin-top:1px;
+}
+.rank-track{
+  height:8px;
+  background:var(--panel-2);
+  border-radius:5px;
+  overflow:hidden;
+  border:1px solid var(--border);
+}
+.rank-fill{
+  height:100%;
+  border-radius:5px;
+  transition:width .4s ease;
+  min-width:3px;
+}
+
+/* ---------- Distribuição horária ---------- */
+.chart-hours{
+  display:grid;
+  grid-template-columns:repeat(24, 1fr);
+  gap:2px;
+  align-items:end;
+  height:150px;
+  padding:0 4px;
+}
+.hour-col{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
+  height:100%;
+  justify-content:flex-end;
+  min-width:0;
+}
+.hour-fill{
+  width:100%;
+  background:linear-gradient(180deg, var(--red), var(--red-dark));
+  border-radius:3px 3px 0 0;
+  min-height:2px;
+  position:relative;
+  transition:height .3s ease;
+}
+.hour-val{
+  position:absolute;
+  top:-13px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:8.5px;
+  font-weight:800;
+  color:var(--red);
+}
+.hour-lbl{
+  font-size:8.5px;
+  color:var(--muted);
+  font-weight:700;
+  writing-mode:vertical-rl;
+  text-orientation:mixed;
+  transform:rotate(180deg);
+}
+@media (max-width:640px){
+  .chart-hours{height:120px;}
+  .hour-lbl{font-size:7.5px;}
+}
+
+/* ---------- Donut ---------- */
+.donut-wrap{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:14px;
+  align-items:center;
+}
+@media (min-width:520px){
+  .donut-wrap{grid-template-columns:auto 1fr;}
+}
+.donut-svg{
+  width:170px; height:170px;
+  margin:0 auto;
+  flex-shrink:0;
+}
+.donut-legend{
+  display:flex; flex-direction:column; gap:8px;
+  min-width:0;
+}
+.donut-leg{
+  display:grid;
+  grid-template-columns:12px 1fr auto;
+  gap:8px; align-items:center;
+  font-size:12.5px;
+}
+.leg-dot{
+  width:11px; height:11px; border-radius:3px;
+}
+.leg-lbl{
+  color:var(--muted); font-weight:600;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  min-width:0;
+}
+.leg-val{
+  font-family:var(--mono);
+  font-weight:800;
+  color:var(--ink);
+  font-size:12px;
+}

@@ -1,0 +1,11 @@
+/* ==========================================================================
+   main.css — entry point do CSS
+   Importa na ordem: tokens → base → layout → componentes → views
+   Ordem importa: variáveis precisam existir antes de serem usadas.
+   ========================================================================== */
+
+@import url("./tokens.css");
+@import url("./base.css");
+@import url("./layout.css");
+@import url("./components/_index.css");
+@import url("./views/_index.css");

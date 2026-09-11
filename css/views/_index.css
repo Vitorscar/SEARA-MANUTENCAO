@@ -1,0 +1,12 @@
+/* ==========================================================================
+   views/_index.css — barrel de estilos específicos por view
+   Só coloque aqui o que NÃO é reutilizável entre telas.
+   ========================================================================== */
+
+@import url("./radar.css");
+@import url("./registro.css");
+@import url("./maquinas.css");
+@import url("./os.css");
+@import url("./relatorios.css");
+@import url("./tecnico.css");
+@import url("./extrato.css");

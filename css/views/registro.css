@@ -1,0 +1,13 @@
+/* ==========================================================================
+   registro.css — grid responsivo do formulário de registro/edição
+   A base do formulário vive em components/form.css.
+   Aqui ficam apenas os grids que SÓ existem nesta view.
+   ========================================================================== */
+
+@media (min-width:640px){
+  /* Cabeçalho da ocorrência: Data | Setor | Turno | Duração | Impacto */
+  .field-grid.cols-5{grid-template-columns:repeat(5,1fr);}
+
+  /* Outros blocos com 3 colunas lado a lado */
+  .field-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+}

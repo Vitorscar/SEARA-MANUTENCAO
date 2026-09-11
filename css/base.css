@@ -1,0 +1,34 @@
+/* ==========================================================================
+   base.css — reset, tipografia global, animações de estado do body
+   ========================================================================== */
+
+*{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+
+html,body{height:100%;}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;
+}
+
+button{font-family:inherit; cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+
+/* ---------- Alerta crítico: flash radial ---------- */
+body.critical-flash::before{
+  content:"";
+  position:fixed; inset:0;
+  pointer-events:none; z-index:1400;
+  background:radial-gradient(circle, rgba(200,16,46,0) 30%, rgba(200,16,46,.35) 100%);
+  animation:critPulse .5s ease 4;
+}
+@keyframes critPulse{0%,100%{opacity:0} 50%{opacity:1}}
+
+/* ---------- Blink genérico (usado por #net-pill.offline) ---------- */
+@keyframes blink{50%{opacity:.3}}
+
+/* ---------- Utilidade ---------- */
+.hidden{display:none!important;}

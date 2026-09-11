@@ -1,0 +1,30 @@
+/* ==========================================================================
+   toast.css — notificações efêmeras do topo
+   ========================================================================== */
+
+#toastwrap{
+  position:fixed; top:14px; left:50%;
+  transform:translateX(-50%);
+  z-index:2100;
+  display:flex; flex-direction:column; gap:8px;
+  width:min(360px,92vw);
+  pointer-events:none;
+}
+
+.toast{
+  background:#2A2422; color:#fff;
+  border-radius:10px; padding:12px 16px;
+  font-size:13.5px; font-weight:600;
+  box-shadow:0 8px 24px rgba(0,0,0,.3);
+  animation:slidein .22s ease;
+  border-left:4px solid var(--sun);
+}
+
+/* Variantes de cor */
+.toast.green{border-left-color:var(--green);}
+.toast.red  {border-left-color:var(--red);}
+
+@keyframes slidein{
+  from{opacity:0; transform:translateY(-12px);}
+  to  {opacity:1; transform:translateY(0);}
+}

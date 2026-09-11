@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#C8102E">
+  <title>Gestão de Paradas — Manutenção Seara</title>
+
+  <!-- CSS modular -->
+  <!-- CSS modular (links diretos — sem @import) -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/components/chip.css">
+<link rel="stylesheet" href="css/components/card.css">
+<link rel="stylesheet" href="css/components/button.css">
+<link rel="stylesheet" href="css/components/form.css">
+<link rel="stylesheet" href="css/components/modal.css">
+<link rel="stylesheet" href="css/components/toast.css">
+<link rel="stylesheet" href="css/components/undo.css">
+<link rel="stylesheet" href="css/components/qr-overlay.css">
+<link rel="stylesheet" href="css/components/kanban.css">
+<link rel="stylesheet" href="css/components/chart.css">
+<link rel="stylesheet" href="css/views/radar.css">
+<link rel="stylesheet" href="css/views/registro.css">
+<link rel="stylesheet" href="css/views/maquinas.css">
+<link rel="stylesheet" href="css/views/os.css">
+<link rel="stylesheet" href="css/views/equipe.css">
+<link rel="stylesheet" href="css/views/relatorios.css">
+  <!-- (Opcional) PWA — descomente quando criar manifest + sw.js
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/favicon.ico">
+  -->
+</head>
+<body>
+
+  <!-- Container de toasts (renderizados via JS) -->
+  <div id="toastwrap"></div>
+
+  <!-- ============================================================
+       SHELL DO APP
+       ============================================================ -->
+  <div id="app">
+
+    <!-- ---------- Sidebar (desktop ≥900px) ---------- -->
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="mark">☀</div>
+        <b>Gestão de Paradas</b>
+        <span>Seara · Manutenção industrial</span>
+      </div>
+
+      <button class="nav-item active" data-view="radar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/>
+        </svg>
+        Radar
+        <span class="badge-nav hidden" id="navRadarCount">0</span>
+      </button>
+
+      <button class="nav-item" data-view="registro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Registrar
+      </button>
+
+      <button class="nav-item" data-view="maquinas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/>
+        </svg>
+        Máquinas
+      </button>
+
+      <button class="nav-item" data-view="os">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <path d="M9 12h6M9 16h4"/>
+        </svg>
+        Ordens
+      </button>
+<button class="nav-item" data-view="equipe">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+  Equipe
+</button>
+      <button class="nav-item" data-view="relatorios">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/>
+        </svg>
+        Relatórios
+      </button>
+    </aside>
+
+    <!-- ---------- Coluna principal ---------- -->
+    <div id="main">
+
+      <header id="topbar">
+        <div class="greet" id="greetText">
+          Bom dia, Técnico.<span class="time" id="greetSub">—</span>
+        </div>
+        <div id="net-pill">
+          <span class="dot"></span><span id="netText">Online</span>
+        </div>
+      </header>
+
+      <!-- Views são renderizadas aqui -->
+      <main id="view"></main>
+    </div>
+
+    <!-- ---------- Bottom nav (mobile <900px) ---------- -->
+    <nav id="bottomnav">
+      <button class="nav-item active" data-view="radar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/>
+        </svg>
+        <span>Radar</span>
+        <span class="badge-nav hidden" id="navRadarCount2">0</span>
+      </button>
+
+      <button class="nav-item" data-view="registro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>Registrar</span>
+      </button>
+
+      <button class="nav-item" data-view="maquinas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/>
+        </svg>
+        <span>Máquinas</span>
+      </button>
+
+      <button class="nav-item" data-view="os">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <path d="M9 12h6M9 16h4"/>
+        </svg>
+        <span>OS</span>
+      </button>
+        <button class="nav-item" data-view="equipe">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+  <span>Equipe</span>
+</button>
+      <button class="nav-item" data-view="relatorios">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/>
+        </svg>
+        <span>Relat.</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ============================================================
+       PORTALS / OVERLAYS (fora do #app)
+       ============================================================ -->
+
+  <!-- Modais são injetados aqui pelo ui/modal.js -->
+  <div id="modalRoot"></div>
+
+  <!-- Barra de desfazer (undo.js) -->
+  <div class="undo-bar" id="undoBar">
+    <span id="undoText">Ação realizada</span>
+    <button type="button" onclick="desfazer()">Desfazer</button>
+  </div>
+
+  <!-- Overlay do leitor de QR (qr.service.js) -->
+  <div class="qr-overlay" id="qrOverlay">
+    <div class="qr-top">
+      <h3>Aponte para o QR da máquina</h3>
+      <button type="button" onclick="fecharQR()">✕</button>
+    </div>
+    <video id="qrVideo" playsinline muted></video>
+    <div class="qr-frame"></div>
+    <div class="qr-hint" id="qrHint">Procurando código…</div>
+  </div>
+
+  <!-- ============================================================
+       SCRIPTS
+       ============================================================ -->
+
+  <!-- 1) jsQR — precisa carregar ANTES do app.js (expõe window.jsQR) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+  <!-- 2) Aplicação (ES modules) -->
+  <script type="module" src="js/app.js"></script>
+
+  <!-- 3) Fallback para navegadores sem suporte a módulos -->
+  <noscript>
+    <div style="padding:24px; text-align:center; font-family:sans-serif; color:#1A1614;">
+      Este aplicativo requer JavaScript habilitado para funcionar.
+    </div>
+  </noscript>
+
+</body>
+</html>

@@ -1,0 +1,131 @@
+/* ==========================================================================
+   layout.css — shell do app: sidebar, topbar, bottomnav, view container
+   Também contém o cabeçalho de seção (.section-head) usado em todas as views.
+   ========================================================================== */
+
+#app{display:flex; min-height:100vh;}
+
+/* ---------- Sidebar (desktop) ---------- */
+#sidebar{
+  display:none;
+  width:230px; flex-shrink:0;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  padding:18px 12px;
+  flex-direction:column; gap:3px;
+}
+#sidebar .brand{
+  padding:0 10px 16px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:12px;
+}
+#sidebar .brand .mark{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:9px;
+  background:var(--sun); color:#1a1a1a;
+  font-weight:900; font-size:17px;
+  margin-bottom:8px;
+}
+#sidebar .brand b{color:var(--text); display:block; font-size:15px; font-weight:800;}
+#sidebar .brand span{color:var(--muted); font-size:11.5px;}
+
+/* ---------- Nav item (compartilhado sidebar + bottomnav) ---------- */
+.nav-item{
+  display:flex; align-items:center; gap:11px;
+  padding:10px 12px;
+  border-radius:9px;
+  border:none; background:transparent;
+  color:var(--muted); text-align:left;
+  font-size:13.5px; font-weight:600; width:100%;
+}
+.nav-item:hover{background:var(--panel-2); color:var(--text);}
+.nav-item.active{background:var(--red-dim); color:var(--red);}
+.nav-item svg{width:18px; height:18px; flex-shrink:0;}
+
+.nav-item .badge-nav{
+  margin-left:auto;
+  background:var(--red); color:#fff;
+  font-size:10.5px; font-weight:800;
+  padding:2px 7px; border-radius:20px;
+}
+.nav-item.active .badge-nav{background:var(--red);}
+
+/* ---------- Main column ---------- */
+#main{flex:1; min-width:0; display:flex; flex-direction:column;}
+
+#topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px;
+  border-bottom:1px solid var(--border);
+  background:var(--panel);
+  position:sticky; top:0; z-index:5;
+}
+#topbar .greet{font-size:14.5px; font-weight:600;}
+#topbar .greet .time{
+  color:var(--muted); font-family:var(--mono);
+  font-size:11.5px; font-weight:500;
+  display:block; margin-top:2px;
+}
+
+/* Pill de status de rede */
+#net-pill{
+  font-size:11px; font-weight:700;
+  padding:5px 10px; border-radius:20px;
+  background:var(--green-dim); color:var(--green);
+  display:flex; align-items:center; gap:6px;
+}
+#net-pill.offline{background:var(--red-dim); color:var(--red);}
+#net-pill .dot{
+  width:6px; height:6px; border-radius:50%;
+  background:currentColor;
+}
+#net-pill.offline .dot{animation:blink 1s infinite;}
+
+/* Container de views */
+#view{
+  flex:1;
+  padding:14px; padding-bottom:96px;
+  max-width:1180px; width:100%; margin:0 auto;
+}
+
+/* ---------- Bottom nav (mobile) ---------- */
+#bottomnav{
+  position:fixed; bottom:0; left:0; right:0;
+  display:flex;
+  background:var(--panel);
+  border-top:1px solid var(--border);
+  padding:5px 4px calc(5px + env(safe-area-inset-bottom));
+  z-index:10;
+}
+#bottomnav .nav-item{
+  flex-direction:column; gap:2px;
+  font-size:9.5px; align-items:center;
+  padding:6px 2px; position:relative;
+}
+#bottomnav .nav-item svg{width:21px; height:21px;}
+#bottomnav .nav-item .badge-nav{
+  position:absolute; top:2px; right:calc(50% - 18px);
+  margin:0; padding:1px 5px;
+  font-size:9px; min-width:16px; text-align:center;
+}
+
+/* ---------- Section header (usado em todas as views) ---------- */
+.section-head{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:18px 0 10px;
+}
+.section-head h2{
+  font-size:12px; color:var(--muted); font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.section-head .action{
+  color:var(--red); background:none; border:none;
+  font-size:12.5px; font-weight:700;
+}
+
+/* ---------- Breakpoint: desktop ---------- */
+@media (min-width:900px){
+  #sidebar{display:flex;}
+  #bottomnav{display:none;}
+  #view{padding:22px 28px 40px;}
+}

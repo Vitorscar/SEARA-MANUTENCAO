@@ -1,0 +1,46 @@
+/* ==========================================================================
+   chip.css — status chips do Radar (contadores no topo)
+   ========================================================================== */
+
+.status-row{
+  display:grid; grid-template-columns:repeat(2,1fr);
+  gap:10px; margin-bottom:14px;
+}
+@media (min-width:640px){
+  .status-row{grid-template-columns:repeat(4,1fr);}
+}
+
+.chip{
+  display:flex; align-items:center; gap:10px;
+  padding:12px 14px; border-radius:var(--radius);
+  border:1px solid var(--border); background:var(--panel);
+  box-shadow:var(--shadow);
+}
+.chip .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+.chip b{font-family:var(--mono); font-size:20px; display:block; line-height:1;}
+.chip .lbl{
+  color:var(--muted); font-size:11px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.04em;
+  margin-top:3px; display:block;
+}
+
+/* Variantes por cor */
+.chip.red{border-color:var(--red-dim);}
+.chip.red b{color:var(--red);}
+.chip.amber{border-color:var(--amber-dim);}
+.chip.amber b{color:var(--amber);}
+.chip.sun{border-color:var(--sun-dim);}
+.chip.sun b{color:var(--sun-dark);}
+.chip.green{border-color:var(--green-dim);}
+.chip.green b{color:var(--green);}
+
+/* Pontos coloridos */
+.dot.red{background:var(--red);}
+.dot.amber{background:var(--amber);}
+.dot.sun{background:var(--sun);}
+.dot.green{background:var(--green);}
+
+/* Responsivo: chips menores em telas muito estreitas */
+@media (max-width:380px){
+  .status-row{grid-template-columns:1fr 1fr;}
+}

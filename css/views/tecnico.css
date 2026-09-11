@@ -1,0 +1,104 @@
+/* ==========================================================================
+   tecnico.css — ficha individual do funcionário
+   ========================================================================== */
+
+.tecnico-header{margin-bottom:12px;}
+
+.tecnico-perfil{
+  display:flex; align-items:center; gap:14px;
+  padding:16px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  margin-bottom:12px;
+  flex-wrap:wrap;
+}
+.tp-avatar{
+  width:56px; height:56px; border-radius:50%;
+  background:var(--red-dim); color:var(--red);
+  font-weight:900; font-size:20px;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.tp-info{flex:1; min-width:0;}
+.tp-nome{
+  font-size:20px; font-weight:900;
+  margin:0 0 4px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.tp-meta{font-size:12.5px; color:var(--muted);}
+
+.tp-current{
+  background:var(--sun-dim);
+  border:1px solid var(--sun);
+  border-radius:var(--radius);
+  padding:12px 14px;
+  margin-bottom:14px;
+}
+.tp-current-lbl{
+  font-size:10px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.06em;
+  color:var(--sun-dark);
+  margin-bottom:4px;
+}
+.tp-current-body{
+  display:flex; justify-content:space-between; align-items:center;
+  gap:10px;
+}
+.tp-current-body b{font-size:15px; color:var(--ink);}
+.tp-current-time{
+  font-family:var(--mono); font-weight:900;
+  background:rgba(253,185,19,.2);
+  color:var(--sun-dark);
+  padding:4px 10px; border-radius:8px;
+  font-size:12.5px;
+  white-space:nowrap;
+}
+
+/* ---------- Tabela dinâmica ---------- */
+.hist-tabela-wrap{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow-x:auto;
+}
+.hist-tabela{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12.5px;
+  min-width:640px;
+}
+.hist-tabela th{
+  text-align:left;
+  padding:10px 12px;
+  background:var(--panel-2);
+  font-size:10.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.04em;
+  color:var(--muted);
+  border-bottom:1px solid var(--border);
+  user-select:none;
+}
+.hist-tabela th[data-sort]{cursor:pointer;}
+.hist-tabela th[data-sort]:hover{color:var(--red);}
+.hist-tabela td{
+  padding:10px 12px;
+  border-bottom:1px solid var(--border);
+  vertical-align:top;
+  color:var(--ink);
+}
+.hist-tabela tr:last-child td{border-bottom:none;}
+.hist-tabela tbody tr:hover{background:var(--panel-2);}
+
+/* ---------- Tags de status (reaproveitadas) ---------- */
+.tag{
+  display:inline-block;
+  padding:3px 9px;
+  border-radius:20px;
+  font-size:10.5px; font-weight:800;
+}
+.tag-baixo  {background:var(--green-dim); color:var(--green);}
+.tag-medio  {background:var(--amber-dim); color:var(--amber);}
+.tag-alto   {background:var(--red-dim);   color:var(--red);}
+.tag-critico{background:var(--red);       color:#fff;}

@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Gestão de Paradas — Manutenção Seara</title>
+<style>
+:root{
+  --bg:#F5F2EC;
+  --panel:#FFFFFF;
+  --panel-2:#FAF8F4;
+  --border:#E5DFD5;
+  --border-2:#D5CCBE;
+  --text:#1A1614;
+  --muted:#6B6460;
+  --muted-2:#A39B94;
+  --red:#C8102E;
+  --red-dark:#8C0C21;
+  --red-dim:#FBE9EC;
+  --sun:#FDB913;
+  --sun-dark:#D89A00;
+  --sun-dim:#FFF6E0;
+  --amber:#C77700;
+  --amber-dim:#FFF1D9;
+  --green:#1E7A3D;
+  --green-dim:#E5F2E9;
+  --blue:#1D4ED8;
+  --blue-dim:#E4EBFD;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(26,22,20,.04), 0 4px 14px rgba(26,22,20,.06);
+  --mono:ui-monospace,"SFMono-Regular","Cascadia Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;
+}
+body.critical-flash::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:1400;
+  background:radial-gradient(circle, rgba(200,16,46,0) 30%, rgba(200,16,46,.35) 100%);
+  animation:critPulse .5s ease 4;
+}
+@keyframes critPulse{0%,100%{opacity:0}50%{opacity:1}}
+button{font-family:inherit; cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+
+/* ---------- Shell ---------- */
+#app{display:flex; min-height:100vh;}
+
+#sidebar{
+  display:none; width:230px; flex-shrink:0;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  padding:18px 12px;
+  flex-direction:column; gap:3px;
+}
+#sidebar .brand{
+  padding:0 10px 16px; border-bottom:1px solid var(--border); margin-bottom:12px;
+}
+#sidebar .brand .mark{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:9px; background:var(--sun);
+  color:#1a1a1a; font-weight:900; font-size:17px; margin-bottom:8px;
+}
+#sidebar .brand b{color:var(--text); display:block; font-size:15px; font-weight:800;}
+#sidebar .brand span{color:var(--muted); font-size:11.5px;}
+
+.nav-item{
+  display:flex; align-items:center; gap:11px;
+  padding:10px 12px; border-radius:9px; border:none; background:transparent;
+  color:var(--muted); text-align:left; font-size:13.5px; width:100%;
+  font-weight:600;
+}
+.nav-item:hover{background:var(--panel-2); color:var(--text);}
+.nav-item.active{background:var(--red-dim); color:var(--red);}
+.nav-item svg{width:18px; height:18px; flex-shrink:0;}
+.nav-item .badge-nav{
+  margin-left:auto; background:var(--red); color:#fff;
+  font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:20px;
+}
+.nav-item.active .badge-nav{background:var(--red);}
+
+#main{flex:1; min-width:0; display:flex; flex-direction:column;}
+#topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px; border-bottom:1px solid var(--border);
+  background:var(--panel); position:sticky; top:0; z-index:5;
+}
+#topbar .greet{font-size:14.5px; font-weight:600;}
+#topbar .greet .time{color:var(--muted); font-family:var(--mono); font-size:11.5px; display:block; font-weight:500; margin-top:2px;}
+#net-pill{
+  font-size:11px; font-weight:700; padding:5px 10px; border-radius:20px;
+  background:var(--green-dim); color:var(--green); display:flex; align-items:center; gap:6px;
+}
+#net-pill.offline{background:var(--red-dim); color:var(--red);}
+#net-pill .dot{width:6px; height:6px; border-radius:50%; background:currentColor;}
+#net-pill.offline .dot{animation:blink 1s infinite;}
+@keyframes blink{50%{opacity:.3}}
+
+#view{flex:1; padding:14px; padding-bottom:96px; max-width:1180px; width:100%; margin:0 auto;}
+
+#bottomnav{
+  position:fixed; bottom:0; left:0; right:0; display:flex;
+  background:var(--panel); border-top:1px solid var(--border);
+  padding:5px 4px calc(5px + env(safe-area-inset-bottom)); z-index:10;
+}
+#bottomnav .nav-item{flex-direction:column; gap:2px; font-size:9.5px; align-items:center; padding:6px 2px; position:relative;}
+#bottomnav .nav-item svg{width:21px; height:21px;}
+#bottomnav .nav-item .badge-nav{
+  position:absolute; top:2px; right:calc(50% - 18px);
+  margin:0; padding:1px 5px; font-size:9px; min-width:16px; text-align:center;
+}
+
+@media (min-width:900px){
+  #sidebar{display:flex;}
+  #bottomnav{display:none;}
+  #view{padding:22px 28px 40px;}
+}
+
+/* ---------- Status chips ---------- */
+.status-row{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px;}
+@media (min-width:640px){.status-row{grid-template-columns:repeat(4,1fr);}}
+.chip{
+  display:flex; align-items:center; gap:10px;
+  padding:12px 14px; border-radius:var(--radius);
+  border:1px solid var(--border); background:var(--panel); box-shadow:var(--shadow);
+}
+.chip .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+.chip b{font-family:var(--mono); font-size:20px; display:block; line-height:1;}
+.chip .lbl{color:var(--muted); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin-top:3px; display:block;}
+.chip.red{border-color:var(--red-dim);}
+.chip.red b{color:var(--red);}
+.chip.amber{border-color:var(--amber-dim);}
+.chip.amber b{color:var(--amber);}
+.chip.sun{border-color:var(--sun-dim);}
+.chip.sun b{color:var(--sun-dark);}
+.chip.green{border-color:var(--green-dim);}
+.chip.green b{color:var(--green);}
+.dot.red{background:var(--red);} .dot.amber{background:var(--amber);}
+.dot.sun{background:var(--sun);} .dot.green{background:var(--green);}
+
+/* ---------- Section ---------- */
+.section-head{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:18px 0 10px;
+}
+.section-head h2{
+  font-size:12px; color:var(--muted); font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.section-head .action{
+  color:var(--red); background:none; border:none; font-size:12.5px; font-weight:700;
+}
+
+/* ---------- Big actions (Radar) ---------- */
+.big-actions{display:flex; flex-direction:column; gap:12px; margin-bottom:16px;}
+.big-btn{
+  width:100%; padding:22px 18px; border:none; border-radius:var(--radius);
+  font-size:19px; font-weight:900; letter-spacing:.4px; cursor:pointer; color:#fff;
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  box-shadow:var(--shadow); position:relative; overflow:hidden; text-align:left;
+}
+.big-btn:active{transform:scale(.985);}
+.big-btn .left{display:flex; align-items:center; gap:14px;}
+.big-btn .txt{display:flex; flex-direction:column;}
+.big-btn .txt small{font-size:11.5px; font-weight:600; opacity:.85; margin-top:2px;}
+.big-btn .cnt{
+  background:rgba(0,0,0,.18); border-radius:20px;
+  padding:5px 12px; font-size:14px; font-weight:900; min-width:36px; text-align:center;
+}
+.big-btn .icon-box{
+  width:44px; height:44px; border-radius:12px;
+  background:rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.big-btn .icon-box svg{width:24px; height:24px;}
+.big-parou{background:linear-gradient(135deg,#E11D2E,#8C0C21);}
+.big-atender{background:linear-gradient(135deg,#FDB913,#D89A00); color:#1a1a1a;}
+.big-atender .txt small{opacity:.7;}
+.big-atender .cnt{background:rgba(0,0,0,.15);}
+.big-voltou{background:linear-gradient(135deg,#34B96A,#1E7A3D);}
+
+/* ---------- Parada cards ---------- */
+.card{
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+  padding:14px; margin-bottom:10px; box-shadow:var(--shadow);
+  border-left:4px solid var(--muted-2);
+}
+.card.crit{border-left-color:var(--red); background:linear-gradient(180deg,var(--red-dim) 0%, var(--panel) 60px);}
+.card.warn{border-left-color:var(--amber);}
+.card.atendendo{border-left-color:var(--sun);}
+.card .top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+.card .title{font-size:15.5px; font-weight:700; display:flex; align-items:center; gap:6px;}
+.card .subtitle{color:var(--muted); font-size:12px; margin-top:2px;}
+.card .tempo{
+  font-family:var(--mono); font-size:14px; font-weight:800; text-align:right;
+  color:var(--red); background:var(--red-dim); padding:6px 10px; border-radius:8px;
+  white-space:nowrap;
+}
+.card.warn .tempo{color:var(--amber); background:var(--amber-dim);}
+.card.atendendo .tempo{color:var(--sun-dark); background:var(--sun-dim);}
+.card .tempo .lbl{display:block; font-size:9.5px; color:var(--muted); font-weight:600; margin-bottom:1px; text-transform:uppercase; letter-spacing:.04em; text-align:right;}
+.card .meta{display:flex; gap:12px; margin-top:8px; font-size:12px; color:var(--muted); flex-wrap:wrap;}
+.card .meta b{color:var(--text); font-weight:600;}
+.card .actions{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;}
+.card .thumb{width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid var(--border); flex-shrink:0;}
+
+.btn{
+  border-radius:9px; border:1px solid var(--border); background:var(--panel-2);
+  color:var(--text); padding:9px 14px; font-size:13px; font-weight:600;
+  transition:transform .12s, filter .15s;
+}
+.btn:active{transform:scale(.97);}
+.btn.primary{background:var(--red); border-color:var(--red); color:#fff;}
+.btn.sun{background:var(--sun); border-color:var(--sun); color:#1a1a1a;}
+.btn.green{background:var(--green); border-color:var(--green); color:#fff;}
+.btn.ghost{background:transparent;}
+.btn.sm{padding:7px 11px; font-size:12px;}
+.btn.block{width:100%; padding:15px; font-size:15px; font-weight:800; letter-spacing:.3px;}
+
+.empty{color:var(--muted); font-size:13px; text-align:center; padding:28px 16px; background:var(--panel-2); border:1px dashed var(--border-2); border-radius:12px;}
+
+/* ---------- Forms ---------- */
+.form-card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; margin-bottom:14px;}
+.form-card .head{padding:13px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; background:var(--panel-2);}
+.form-card .head h3{font-size:13.5px; font-weight:800; text-transform:uppercase; letter-spacing:.03em;}
+.form-card .head .dot{width:9px; height:9px; border-radius:50%; background:var(--red);}
+.form-card .body{padding:16px;}
+
+.field-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px;}
+@media (min-width:640px){.field-grid.cols-5{grid-template-columns:repeat(5,1fr);}}
+@media (min-width:640px){.field-grid.cols-3{grid-template-columns:repeat(3,1fr);}}
+
+.field{display:flex; flex-direction:column; gap:5px;}
+.field label{font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;}
+.field input, .field select, .field textarea{
+  width:100%; background:var(--panel); border:1.5px solid var(--border); color:var(--text);
+  padding:11px 12px; border-radius:9px; font-size:14.5px;
+}
+.field input:focus, .field select:focus, .field textarea:focus{
+  outline:none; border-color:var(--red);
+  box-shadow:0 0 0 3px rgba(200,16,46,.1);
+}
+.field textarea{min-height:64px; resize:vertical;}
+.field .with-btn{display:flex; gap:8px; align-items:stretch;}
+.field .with-btn > *:first-child{flex:1; min-width:0;}
+.field .icon-btn{
+  background:var(--panel-2); border:1.5px solid var(--border); color:var(--text);
+  min-width:46px; border-radius:9px; font-size:18px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.field .icon-btn.rec{background:var(--red); color:#fff; border-color:var(--red); animation:recPulse .8s infinite;}
+@keyframes recPulse{50%{opacity:.5}}
+.field .icon-btn svg{width:20px; height:20px;}
+
+/* Categoria / subcausa / ação */
+.cat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
+.cat-btn{
+  border:1.5px solid var(--border); background:var(--panel); color:var(--text);
+  border-radius:10px; padding:11px 11px; font-size:12.5px; font-weight:700;
+  text-align:left; font-family:inherit; transition:all .12s;
+}
+.cat-btn small{display:block; font-weight:500; color:var(--muted); font-size:10px; margin-top:2px;}
+.cat-btn.active{border-color:var(--red); background:var(--red-dim); color:var(--red-dark);}
+.cat-btn.active small{color:var(--red);}
+.cat-btn.proj{grid-column:1/-1;}
+
+.chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:10px;}
+.chip-opt{
+  border:1.5px solid var(--border); background:var(--panel); color:var(--muted);
+  border-radius:20px; padding:7px 13px; font-size:12px; font-weight:700;
+  cursor:pointer; font-family:inherit; transition:all .12s;
+}
+.chip-opt.active{background:var(--red); border-color:var(--red); color:#fff;}
+.chip-opt:hover:not(.active){border-color:var(--border-2);}
+
+.radio-row{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.radio-row.three{grid-template-columns:1fr;}
+@media (min-width:640px){.radio-row.three{grid-template-columns:repeat(3,1fr);}}
+.radio-opt{
+  border:1.5px solid var(--border); background:var(--panel); color:var(--text);
+  border-radius:10px; padding:12px 10px; font-size:13px; font-weight:700;
+  text-align:center; cursor:pointer; font-family:inherit; transition:all .12s;
+}
+.radio-opt.active{border-color:var(--red); background:var(--red-dim); color:var(--red-dark);}
+.radio-opt.impacto-baixo.active{border-color:var(--green); background:var(--green-dim); color:var(--green);}
+.radio-opt.impacto-medio.active{border-color:var(--sun-dark); background:var(--sun-dim); color:var(--sun-dark);}
+.radio-opt.impacto-alto.active{border-color:var(--amber); background:var(--amber-dim); color:var(--amber);}
+.radio-opt.impacto-critico.active{border-color:var(--red); background:var(--red); color:#fff;}
+
+/* Foto */
+.photo-preview{margin-top:10px; position:relative; display:inline-block;}
+.photo-preview img{max-width:100%; max-height:150px; border-radius:10px; border:1.5px solid var(--border); display:block;}
+.photo-preview button{
+  position:absolute; top:6px; right:6px; background:rgba(0,0,0,.7); border:none;
+  color:#fff; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:13px;
+}
+
+/* ---------- Kanban OS ---------- */
+.kanban{display:grid; grid-template-columns:repeat(4,minmax(230px,1fr)); gap:12px; overflow-x:auto; padding-bottom:8px;}
+@media (max-width:899px){.kanban{grid-auto-flow:column; grid-template-columns:none;}}
+.kcol{background:var(--panel-2); border-radius:var(--radius); padding:10px; min-height:140px; border:1px solid var(--border);}
+.kcol h3{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:800; display:flex; justify-content:space-between; margin-bottom:10px;}
+.kcard{
+  background:var(--panel); border:1px solid var(--border); border-radius:9px;
+  padding:11px; margin-bottom:8px; font-size:13px; cursor:grab; border-left:3px solid var(--red);
+}
+.kcard.warn{border-left-color:var(--amber);}
+.kcard.sun{border-left-color:var(--sun);}
+.kcard.done{border-left-color:var(--green);}
+.kcard .num{font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-bottom:3px;}
+.kcard .title{font-weight:700; margin-bottom:3px;}
+.kcard .sub{color:var(--muted); font-size:11.5px;}
+.kcol.dragover{outline:2px dashed var(--red); outline-offset:-4px;}
+
+/* ---------- Reports ---------- */
+.kpi-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:18px;}
+@media (min-width:640px){.kpi-grid{grid-template-columns:repeat(4,1fr);}}
+.kpi{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow);}
+.kpi b{font-family:var(--mono); font-size:22px; display:block; color:var(--red); line-height:1;}
+.kpi span{color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; display:block; margin-top:5px;}
+
+.pareto-row{margin-bottom:14px;}
+.pareto-row .plabel{display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; font-weight:600;}
+.pareto-row .ptrack{height:10px; background:var(--panel-2); border-radius:5px; overflow:hidden; border:1px solid var(--border);}
+.pareto-row .pfill{height:100%; background:linear-gradient(90deg,var(--red),var(--red-dark)); border-radius:5px;}
+
+/* ---------- Modais ---------- */
+.modal{display:none; position:fixed; inset:0; background:rgba(26,22,20,.55); z-index:100; justify-content:center; align-items:flex-end;}
+.modal.ativo{display:flex; animation:fadeIn .16s ease;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(24px); opacity:0} to{transform:translateY(0); opacity:1}}
+.modal-content{
+  background:var(--panel); border-radius:18px 18px 0 0; width:100%; max-width:560px;
+  max-height:92vh; overflow-y:auto; padding:22px 20px 26px; animation:slideUp .2s ease;
+  border-top:4px solid var(--red); box-shadow:0 -8px 40px rgba(0,0,0,.18);
+}
+.modal.amarelo .modal-content{border-top-color:var(--sun-dark);}
+.modal.verde .modal-content{border-top-color:var(--green);}
+.modal-header{font-size:17px; font-weight:900; margin-bottom:18px; display:flex; align-items:center; gap:10px;}
+.modal-header .ico{font-size:22px;}
+.modal-header .close{
+  margin-left:auto; background:var(--panel-2); border:none; width:32px; height:32px;
+  border-radius:50%; color:var(--muted); font-size:16px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+@media (min-width:640px){.modal{align-items:center;} .modal-content{border-radius:16px;}}
+
+/* ---------- Undo ---------- */
+.undo-bar{
+  position:fixed; left:50%; bottom:18px; transform:translateX(-50%) translateY(150px);
+  background:#2A2422; color:#fff; padding:12px 16px; border-radius:12px;
+  font-size:13px; font-weight:700; z-index:1900; display:flex; align-items:center; gap:12px;
+  max-width:92%; transition:transform .25s ease; box-shadow:0 10px 30px rgba(0,0,0,.3);
+}
+.undo-bar.show{transform:translateX(-50%) translateY(0);}
+.undo-bar button{
+  background:var(--sun); color:#1a1a1a; border:none; padding:8px 14px;
+  border-radius:8px; font-weight:900; cursor:pointer; font-size:13px;
+}
+
+/* ---------- Toast ---------- */
+#toastwrap{position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:2100; display:flex; flex-direction:column; gap:8px; width:min(360px,92vw); pointer-events:none;}
+.toast{
+  background:#2A2422; color:#fff; border-radius:10px; padding:12px 16px;
+  font-size:13.5px; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.3);
+  animation:slidein .22s ease; border-left:4px solid var(--sun);
+}
+.toast.green{border-left-color:var(--green);}
+.toast.red{border-left-color:var(--red);}
+@keyframes slidein{from{opacity:0; transform:translateY(-12px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- QR overlay ---------- */
+.qr-overlay{position:fixed; inset:0; background:#000; z-index:1500; display:none; flex-direction:column;}
+.qr-overlay.ativo{display:flex;}
+.qr-overlay video{flex:1; width:100%; object-fit:cover;}
+.qr-overlay .qr-top{position:absolute; top:0; left:0; right:0; padding:16px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to bottom, rgba(0,0,0,.7), transparent); z-index:2;}
+.qr-overlay .qr-top h3{margin:0; color:#fff; font-size:15px; font-weight:800;}
+.qr-overlay .qr-top button{background:rgba(255,255,255,.2); border:none; color:#fff; width:36px; height:36px; border-radius:50%; font-size:17px; cursor:pointer;}
+.qr-overlay .qr-frame{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:240px; height:240px; border:3px solid var(--sun); border-radius:16px; box-shadow:0 0 0 4000px rgba(0,0,0,.5); z-index:1;}
+.qr-overlay .qr-hint{position:absolute; bottom:28px; left:0; right:0; color:#fff; text-align:center; font-size:13px; padding:0 20px; z-index:2;}
+
+.hidden{display:none!important;}
+
+@media (max-width:380px){
+  .big-btn{padding:18px 14px; font-size:16.5px;}
+  .big-btn .icon-box{width:38px; height:38px;}
+  .status-row{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+
+<div id="toastwrap"></div>
+
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="mark">☀</div>
+      <b>Gestão de Paradas</b>
+      <span>Seara · Manutenção industrial</span>
+    </div>
+    <button class="nav-item active" data-view="radar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg>
+      Radar
+      <span class="badge-nav hidden" id="navRadarCount">0</span>
+    </button>
+    <button class="nav-item" data-view="registro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Registrar
+    </button>
+    <button class="nav-item" data-view="maquinas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+      Máquinas
+    </button>
+    <button class="nav-item" data-view="os">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+      Ordens
+    </button>
+    <button class="nav-item" data-view="relatorios">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+      Relatórios
+    </button>
+  </aside>
+
+  <div id="main">
+    <header id="topbar">
+      <div class="greet" id="greetText">Bom dia, Técnico.<span class="time" id="greetSub">—</span></div>
+      <div id="net-pill" onclick="atualizarRede()">
+        <span class="dot"></span><span id="netText">Online</span>
+      </div>
+    </header>
+    <main id="view"></main>
+  </div>
+
+  <nav id="bottomnav">
+    <button class="nav-item active" data-view="radar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg>
+      <span>Radar</span>
+      <span class="badge-nav hidden" id="navRadarCount2">0</span>
+    </button>
+    <button class="nav-item" data-view="registro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Registrar</span>
+    </button>
+    <button class="nav-item" data-view="maquinas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+      <span>Máquinas</span>
+    </button>
+    <button class="nav-item" data-view="os">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+      <span>OS</span>
+    </button>
+    <button class="nav-item" data-view="relatorios">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+      <span>Relat.</span>
+    </button>
+  </nav>
+</div>
+
+<div id="modalRoot"></div>
+
+<div class="undo-bar" id="undoBar">
+  <span id="undoText">Ação realizada</span>
+  <button onclick="desfazer()">Desfazer</button>
+</div>
+
+<div class="qr-overlay" id="qrOverlay">
+  <div class="qr-top"><h3>Aponte para o QR da máquina</h3><button onclick="fecharQR()">✕</button></div>
+  <video id="qrVideo" playsinline muted></video>
+  <div class="qr-frame"></div>
+  <div class="qr-hint" id="qrHint">Procurando código…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+/* =========================================================
+   CONSTANTES — fiel à planilha Seara
+========================================================= */
+const SUBCAUSAS = {
+  "Elétrica": ["Calorifício","Corpo estranho","Curto-circuito","Queima de componente","Falha de sensor"],
+  "Mecânica": ["Desalinhamento","Desgaste","Erro de montagem","Quebra","Folga excessiva"],
+  "Civil/Estrutural": ["Rachadura","Infiltração","Corrosão estrutural","Fixação solta"],
+  "Utilidades": ["Oxidação","Sobrecarga","Falta de ar comprimido","Falha de energia"],
+  "Projeto": ["Subdimensionamento","Erro de especificação","Falha de projeto original"]
+};
+const SETORES = ["Abate","Embalagem","Câmara fria","Expedição","Cortes","Utilidades","Caldeira","Linha 01","Linha 02","Linha 03","Linha 04"];
+const COMPONENTES_SUG = ["Correia","Rolamento","Fusível","Motor","Sensor","Redutor","Corrente","Engrenagem","Válvula","Disjuntor","Contator","Inversor de frequência","Eixo","Mancal","Mangueira hidráulica"];
+
+/* =========================================================
+   ESTADO + PERSISTÊNCIA
+========================================================= */
+const DB_KEY = 'manutencao_seara_v1';
+let db = carregarDB();
+let draft = {
+  categoria:null, subcausa:null,
+  acaoComponente:null, acaoPreventiva:null,
+  impacto:'Alto', foto:null,
+  paradaEditando:null
+};
+let lastSetor = localStorage.getItem('ultimoSetor') || '';
+let ultimaAcao = null, undoTimer = null;
+let qrStream = null, qrLoopId = null;
+let reconhecimento = null, ditando = false;
+let draggedOSId = null;
+
+function seed(){
+  const now = Date.now();
+  return {
+    maquinas: [
+      {id:'m1', nome:'Prensa 02', setor:'Linha 03', prioridade:1, status:'parada', qr:'MQ-PRENSA-02'},
+      {id:'m2', nome:'Esteira 04', setor:'Linha 01', prioridade:2, status:'parada', qr:'MQ-ESTEIRA-04'},
+      {id:'m3', nome:'Injetora 07', setor:'Linha 02', prioridade:1, status:'ok', qr:'MQ-INJETORA-07'},
+      {id:'m4', nome:'Torno CNC 11', setor:'Linha 04', prioridade:2, status:'ok', qr:'MQ-TORNO-11'},
+      {id:'m5', nome:'Compressor 01', setor:'Utilidades', prioridade:1, status:'ok', qr:'MQ-COMP-01'},
+      {id:'m6', nome:'Seladora 09', setor:'Linha 02', prioridade:3, status:'ok', qr:'MQ-SEL-09'}
+    ],
+    tecnicos: [
+      {id:'t1', nome:'João Silva', especialidade:'Mecânica'},
+      {id:'t2', nome:'Carla Souza', especialidade:'Elétrica'},
+      {id:'t3', nome:'Marcos Lima', especialidade:'Mecânica'}
+    ],
+    paradas: [
+      {id:'p1', numero:1, maquinaId:'m1', setor:'Linha 03', turno:'1º Turno',
+       horaInicio: now - 48*60000, horaFim:null, duracaoMin:null,
+       impacto:'Crítico', status:'aguardando', tecnicoId:null,
+       categoria:null, subcausa:null, componente:null, causaRaiz:'Vazamento hidráulico',
+       acaoComponente:null, acaoPreventiva:null, responsavel:null, observacao:null, foto:null},
+      {id:'p2', numero:2, maquinaId:'m2', setor:'Linha 01', turno:'1º Turno',
+       horaInicio: now - 15*60000, horaFim:null, duracaoMin:null,
+       impacto:'Médio', status:'atendendo', tecnicoId:'t1',
+       categoria:'Elétrica', subcausa:'Falha de sensor', componente:'Sensor de posição',
+       causaRaiz:'Sensor com mau contato',
+       acaoComponente:null, acaoPreventiva:null, responsavel:null, observacao:null, foto:null}
+    ],
+    os: [
+      {id:'os1', paradaId:'p1', maquinaId:'m1', titulo:'Vazamento hidráulico', coluna:'fila', tecnicoId:null},
+      {id:'os2', paradaId:'p2', maquinaId:'m2', titulo:'Sensor de posição', coluna:'andamento', tecnicoId:'t1'}
+    ],
+    seqParada: 3
+  };
+}
+function carregarDB(){
+  try{
+    const raw = localStorage.getItem(DB_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  const s = seed();
+  localStorage.setItem(DB_KEY, JSON.stringify(s));
+  return s;
+}
+function salvarDB(){
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+  catch(e){ toast('Armazenamento cheio — remova fotos antigas.','red'); }
+}
+
+/* =========================================================
+   HELPERS
+========================================================= */
+function fmtMin(ms){
+  const min = Math.max(0, Math.floor(ms/60000));
+  const h = Math.floor(min/60), m = min%60;
+  return h > 0 ? `${h}h${String(m).padStart(2,'0')}` : `${m}min`;
+}
+function fmtDuracaoMin(min){
+  const h = Math.floor(min/60), m = min%60;
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
+}
+function minutosDesde(iso){ return Math.max(0, Math.round((Date.now()-iso)/60000)); }
+function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function nowStr(){
+  const d = new Date();
+  return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+function turnoPorHora(h){
+  if(h>=6 && h<14) return '1º Turno';
+  if(h>=14 && h<22) return '2º Turno';
+  return '3º Turno';
+}
+function turnoAtual(){ return turnoPorHora(new Date().getHours()); }
+function getMaquina(id){ return db.maquinas.find(m=>m.id===id); }
+function getTecnico(id){ return db.tecnicos.find(t=>t.id===id); }
+
+function toast(msg, tipo){
+  const el = document.createElement('div');
+  el.className = 'toast' + (tipo ? ' '+tipo : '');
+  el.textContent = msg;
+  document.getElementById('toastwrap').appendChild(el);
+  setTimeout(()=>el.remove(), 3200);
+}
+
+/* Undo */
+function registrarDesfazer(texto, fn){
+  ultimaAcao = fn;
+  document.getElementById('undoText').textContent = texto;
+  document.getElementById('undoBar').classList.add('show');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(()=>{
+    document.getElementById('undoBar').classList.remove('show');
+    ultimaAcao = null;
+  }, 6000);
+}
+function desfazer(){
+  if(ultimaAcao) ultimaAcao();
+  document.getElementById('undoBar').classList.remove('show');
+  ultimaAcao = null;
+  clearTimeout(undoTimer);
+  salvarDB();
+  toast('Ação desfeita');
+  render();
+}
+
+/* Alerta crítico */
+function alertaCritico(){
+  document.body.classList.add('critical-flash');
+  setTimeout(()=>document.body.classList.remove('critical-flash'), 2000);
+  if(navigator.vibrate) navigator.vibrate([200,100,200,100,250]);
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [0,260,520].forEach(delay=>{
+      setTimeout(()=>{
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type='square'; osc.frequency.value=880;
+        gain.gain.setValueAtTime(.14, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime+0.16);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime+0.18);
+      }, delay);
+    });
+  }catch(e){}
+}
+
+/* Rede */
+function atualizarRede(){
+  const pill = document.getElementById('net-pill');
+  const txt = document.getElementById('netText');
+  if(navigator.onLine){
+    pill.classList.remove('offline');
+    txt.textContent = 'Online';
+  } else {
+    pill.classList.add('offline');
+    txt.textContent = 'Offline';
+  }
+}
+window.addEventListener('online', atualizarRede);
+window.addEventListener('offline', atualizarRede);
+
+/* Relógio + saudação */
+function tickClock(){
+  const h = new Date().getHours();
+  const saud = h<12 ? 'Bom dia' : h<18 ? 'Boa tarde' : 'Boa noite';
+  const nome = localStorage.getItem('tecnicoNome') || 'Técnico';
+  document.getElementById('greetText').innerHTML = `${saud}, ${nome}.<span class="time">${turnoAtual()} · ${nowStr()}</span>`;
+}
+tickClock(); setInterval(tickClock, 30000);
+
+/* =========================================================
+   ROTEAMENTO
+========================================================= */
+const VIEWS = {
+  radar: renderRadar,
+  registro: renderRegistro,
+  maquinas: renderMaquinas,
+  os: renderOS,
+  relatorios: renderRelatorios
+};
+let currentView = 'radar';
+
+function navigate(view){
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(b=>{
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  document.getElementById('view').innerHTML = '';
+  VIEWS[view]();
+  window.scrollTo(0,0);
+  atualizarBadges();
+}
+document.querySelectorAll('.nav-item').forEach(b=>{
+  b.addEventListener('click', ()=>navigate(b.dataset.view));
+});
+
+function atualizarBadges(){
+  const abertas = db.paradas.filter(p=>p.status!=='encerrada').length;
+  ['navRadarCount','navRadarCount2'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.textContent = abertas;
+    el.classList.toggle('hidden', abertas === 0);
+  });
+}
+
+function render(){
+  VIEWS[currentView]?.();
+  atualizarBadges();
+}
+
+/* =========================================================
+   VIEW: RADAR
+========================================================= */
+function renderRadar(){
+  const abertas = db.paradas.filter(p=>p.status!=='encerrada');
+  const criticas = abertas.filter(p=>nivel(p) === 'crit');
+  const atendendo = abertas.filter(p=>p.status==='atendendo');
+  const totalMinHoje = abertas.reduce((s,p)=>s + minutosDesde(p.horaInicio), 0);
+  const encerradasHoje = db.paradas.filter(p=>p.status==='encerrada' &&
+    new Date(p.horaFim).toISOString().slice(0,10) === new Date().toISOString().slice(0,10));
+  const mttr = encerradasHoje.length
+    ? Math.round(encerradasHoje.reduce((s,p)=>s+p.duracaoMin,0)/encerradasHoje.length)
+    : null;
+
+  document.getElementById('view').innerHTML = `
+    <div class="status-row">
+      <div class="chip red"><span class="dot red"></span><div><b>${criticas.length}</b><span class="lbl">Críticas</span></div></div>
+      <div class="chip sun"><span class="dot sun"></span><div><b>${atendendo.length}</b><span class="lbl">Atendendo</span></div></div>
+      <div class="chip amber"><span class="dot amber"></span><div><b>${totalMinHoje}</b><span class="lbl">Min hoje</span></div></div>
+      <div class="chip green"><span class="dot green"></span><div><b>${mttr ? mttr+'m' : '—'}</b><span class="lbl">MTTR</span></div></div>
+    </div>
+
+    <div class="big-actions">
+      <button class="big-btn big-parou" onclick="irParaRegistro()">
+        <div class="left">
+          <div class="icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="txt">PAROU<small>Registrar nova parada de máquina</small></div>
+        </div>
+      </button>
+      <button class="big-btn big-atender" onclick="abrirAtender()">
+        <div class="left">
+          <div class="icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="txt">ATENDER<small>Assumir parada aguardando</small></div>
+        </div>
+        <span class="cnt">${db.paradas.filter(p=>p.status==='aguardando').length}</span>
+      </button>
+      <button class="big-btn big-voltou" onclick="abrirVoltou()">
+        <div class="left">
+          <div class="icon-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div class="txt">VOLTOU<small>Encerrar parada em andamento</small></div>
+        </div>
+        <span class="cnt">${atendendo.length}</span>
+      </button>
+    </div>
+
+    <div class="section-head"><h2>Paradas em aberto</h2><span style="font-size:12px; color:var(--muted); font-weight:700;">${abertas.length}</span></div>
+    <div id="listaParadas"></div>
+  `;
+
+  const lista = document.getElementById('listaParadas');
+  if(abertas.length === 0){
+    lista.innerHTML = `<div class="empty">✅ Nenhuma parada em aberto.<br>Fábrica operando normalmente.</div>`;
+  } else {
+    const ordenadas = [...abertas].sort((a,b)=>a.horaInicio - b.horaInicio);
+    lista.innerHTML = ordenadas.map(p=>paradaCardHTML(p)).join('');
+    bindParadaActions();
+  }
+}
+
+function irParaRegistro(){
+  draft = {categoria:null, subcausa:null, acaoComponente:null, acaoPreventiva:null, impacto:'Alto', foto:null, paradaEditando:null};
+  navigate('registro');
+}
+
+function nivel(p){
+  const m = minutosDesde(p.horaInicio);
+  if(m >= 60) return 'crit';
+  if(m >= 30) return 'warn';
+  return 'ok';
+}
+
+function paradaCardHTML(p){
+  const m = getMaquina(p.maquinaId);
+  const t = p.tecnicoId ? getTecnico(p.tecnicoId) : null;
+  const niv = nivel(p);
+  const cls = p.status === 'atendendo' ? 'atendendo' : niv === 'crit' ? 'crit' : niv === 'warn' ? 'warn' : '';
+  const statusLbl = p.status === 'atendendo' ? `<b>Em atendimento${t?' · '+escapeHtml(t.nome):''}</b>` : '<b>Aguardando técnico</b>';
+  return `
+    <div class="card ${cls}">
+      <div class="top">
+        <div style="display:flex; gap:10px; align-items:flex-start; min-width:0; flex:1;">
+          ${p.foto ? `<img class="thumb" src="${p.foto}" alt="">` : ''}
+          <div style="min-width:0;">
+            <div class="title">#${p.numero} · ${escapeHtml(m?.nome || '—')}</div>
+            <div class="subtitle">${escapeHtml(p.setor)} · ${escapeHtml(p.turno)} · ${escapeHtml(p.categoria||'Sem categoria')}</div>
+          </div>
+        </div>
+        <div class="tempo"><span class="lbl">parada há</span>${fmtMin(Date.now()-p.horaInicio)}</div>
+      </div>
+      <div class="meta">
+        <span>${statusLbl}</span>
+        <span>Impacto: <b style="color:${impactoCor(p.impacto)}">${p.impacto}</b></span>
+      </div>
+      <div class="actions">
+        ${p.status==='aguardando' ? `<button class="btn sm sun" data-act="atender" data-id="${p.id}">Assumir</button>`:''}
+        <button class="btn sm primary" data-act="encerrar" data-id="${p.id}">Encerrar</button>
+        <button class="btn sm ghost" data-act="editar" data-id="${p.id}">Corrigir</button>
+      </div>
+    </div>
+  `;
+}
+function impactoCor(i){
+  return {'Baixo':'#1E7A3D','Médio':'#D89A00','Alto':'#C77700','Crítico':'#C8102E'}[i] || '#6B6460';
+}
+function bindParadaActions(){
+  document.querySelectorAll('[data-act]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const p = db.paradas.find(x=>x.id === btn.dataset.id);
+      if(!p) return;
+      const act = btn.dataset.act;
+      if(act === 'atender') abrirAssumir(p);
+      if(act === 'encerrar') abrirEncerrar(p);
+      if(act === 'editar') abrirCorrigir(p);
+    };
+  });
+}
+
+/* =========================================================
+   VIEW: REGISTRO (formulário fiel à planilha)
+========================================================= */
+function renderRegistro(){
+  const p = draft.paradaEditando ? db.paradas.find(x=>x.id===draft.paradaEditando) : null;
+  const horaInicio = p ? new Date(p.horaInicio) : new Date();
+  const dataStr = horaInicio.toISOString().slice(0,10);
+
+  document.getElementById('view').innerHTML = `
+    <div class="section-head">
+      <h2>${p ? 'Corrigir registro #'+p.numero : 'Registrar nova parada'}</h2>
+    </div>
+
+    <!-- Identificação da ocorrência -->
+    <div class="form-card">
+      <div class="head"><span class="dot"></span><h3>Identificação da ocorrência</h3></div>
+      <div class="body">
+        <div class="field-grid cols-5">
+          <div class="field"><label>Data</label><input type="date" id="fData" value="${dataStr}" ${p?'disabled':''}></div>
+          <div class="field"><label>Setor</label>
+            <select id="fSetor">
+              <option value="">Selecione…</option>
+              ${SETORES.map(s=>`<option ${p?.setor===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Turno (SS)</label>
+            <select id="fTurno">
+              ${['1º Turno','2º Turno','3º Turno'].map(t=>`<option ${(p?.turno||turnoAtual())===t?'selected':''}>${t}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Duração (min)</label><input type="number" id="fDuracao" min="1" placeholder="Ex: 45" value="${p?.duracaoMin||''}"></div>
+          <div class="field"><label>Impacto</label>
+            <select id="fImpacto">
+              ${['Baixo','Médio','Alto','Crítico'].map(i=>`<option ${(p?.impacto||draft.impacto)===i?'selected':''}>${i}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Máquina -->
+    <div class="form-card">
+      <div class="head"><span class="dot"></span><h3>Máquina</h3></div>
+      <div class="body">
+        <div class="field">
+          <label>Máquina</label>
+          <div class="with-btn">
+            <input type="text" id="fMaquina" list="listaMaquinas" placeholder="Nome ou escaneie o QR…" value="${escapeHtml(p ? (getMaquina(p.maquinaId)?.nome||'') : '')}" autocomplete="off">
+            <button type="button" class="icon-btn" onclick="abrirQR()" title="Escanear QR">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+            </button>
+          </div>
+          <datalist id="listaMaquinas">${db.maquinas.map(m=>`<option value="${m.nome}">`).join('')}</datalist>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tipo de falha + Ação (split) -->
+    <div style="display:grid; grid-template-columns:1fr; gap:14px;" id="splitContainer">
+      <!-- Tipo de falha -->
+      <div class="form-card">
+        <div class="head" style="background:var(--sun-dim); border-bottom-color:var(--sun);">
+          <span class="dot" style="background:var(--sun-dark);"></span><h3>Tipo de falha</h3>
+        </div>
+        <div class="body">
+          <label style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:6px;">Categoria</label>
+          <div class="cat-grid" id="catGrid">
+            ${Object.keys(SUBCAUSAS).map(c=>{
+              const active = (p?.categoria||draft.categoria) === c;
+              return `<button type="button" class="cat-btn ${active?'active':''} ${c==='Projeto'?'proj':''}" data-cat="${c}">
+                ${c}<small>${SUBCAUSAS[c].slice(0,2).join(', ')}…</small>
+              </button>`;
+            }).join('')}
+          </div>
+
+          <div id="subcausaWrap" class="hidden">
+            <label style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin:14px 0 6px;">Subcausa específica</label>
+            <div class="chips" id="subcausas"></div>
+          </div>
+
+          <div class="field" style="margin-top:14px;">
+            <label>Nome do componente</label>
+            <input type="text" id="fComponente" list="listaComponentes" placeholder="Ex: Rolamento 6205" value="${escapeHtml(p?.componente||'')}" autocomplete="off">
+            <datalist id="listaComponentes">${COMPONENTES_SUG.map(c=>`<option value="${c}">`).join('')}</datalist>
+          </div>
+
+          <div class="field" style="margin-top:12px;">
+            <label>Causa raiz (detalhe)</label>
+            <div class="with-btn">
+              <textarea id="fCausaRaiz" placeholder="Descreva o motivo principal da falha">${escapeHtml(p?.causaRaiz||'')}</textarea>
+              <button type="button" class="icon-btn" id="btnMic" onclick="toggleDitado()" title="Ditar por voz">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:12px;">
+            <label>Foto (opcional)</label>
+            <button type="button" class="btn block ghost" onclick="document.getElementById('fFotoInput').click()" style="text-align:left; padding:12px;">
+              📸 Anexar foto da ocorrência
+            </button>
+            <input type="file" id="fFotoInput" accept="image/*" capture="environment" style="display:none" onchange="processarFoto(event)">
+            <div class="photo-preview" id="photoPreview" style="display:${draft.foto?'inline-block':'none'};">
+              <img id="photoImg" src="${draft.foto||''}" alt="Preview">
+              <button type="button" onclick="removerFoto()">✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ação -->
+      <div class="form-card">
+        <div class="head" style="background:var(--green-dim); border-bottom-color:#C8E0D0;">
+          <span class="dot" style="background:var(--green);"></span><h3>Ação realizada</h3>
+        </div>
+        <div class="body">
+          <div class="field">
+            <label>Ação no componente</label>
+            <div class="radio-row three" id="acaoCompGrid">
+              <div class="radio-opt ${(p?.acaoComponente||draft.acaoComponente)==='Adaptado'?'active':''}" data-val="Adaptado">Adaptado</div>
+              <div class="radio-opt ${(p?.acaoComponente||draft.acaoComponente)==='Conserto'?'active':''}" data-val="Conserto">Conserto</div>
+              <div class="radio-opt ${(p?.acaoComponente||draft.acaoComponente)==='Substituído (estoque)'?'active':''}" data-val="Substituído (estoque)">Substituído (estoque)</div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:14px;">
+            <label>Ação preventiva</label>
+            <div class="radio-row" id="acaoPrevGrid">
+              <div class="radio-opt ${(p?.acaoPreventiva||draft.acaoPreventiva)==='Item de reserva instalado'?'active':''}" data-val="Item de reserva instalado">Item de reserva</div>
+              <div class="radio-opt ${(p?.acaoPreventiva||draft.acaoPreventiva)==='Nenhuma'?'active':''}" data-val="Nenhuma">Nenhuma</div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:14px;">
+            <label>Responsável</label>
+            <input type="text" id="fResponsavel" placeholder="Nome do técnico" value="${escapeHtml(p?.responsavel || localStorage.getItem('tecnicoNome') || '')}">
+          </div>
+
+          <div class="field" style="margin-top:12px;">
+            <label>Observação (opcional)</label>
+            <textarea id="fObservacao" placeholder="Anotações extras">${escapeHtml(p?.observacao||'')}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:6px; margin-bottom:10px;">
+      <button class="btn block primary" onclick="salvarRegistro()">✅ ${p?'Salvar correção':'Registrar parada'}</button>
+      <button class="btn block ghost" onclick="cancelarRegistro()">Cancelar</button>
+    </div>
+  `;
+
+  // Ajustar layout 2-col em telas grandes
+  const split = document.getElementById('splitContainer');
+  if(window.innerWidth >= 900){
+    split.style.gridTemplateColumns = '1fr 1fr';
+  }
+
+  wireRegistro();
+}
+
+function wireRegistro(){
+  // Categoria → subcausa
+  const grid = document.getElementById('catGrid');
+  grid.addEventListener('click', e=>{
+    const btn = e.target.closest('.cat-btn'); if(!btn) return;
+    [...grid.children].forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    draft.categoria = btn.dataset.cat;
+    draft.subcausa = null;
+    renderSubcausasRegistro();
+    document.getElementById('subcausaWrap').classList.remove('hidden');
+  });
+  // Se categoria já vem do draft/parada, mostrar subcausas
+  const catInicial = draft.paradaEditando
+    ? db.paradas.find(x=>x.id===draft.paradaEditando)?.categoria
+    : draft.categoria;
+  if(catInicial){
+    draft.categoria = catInicial;
+    draft.subcausa = draft.paradaEditando
+      ? db.paradas.find(x=>x.id===draft.paradaEditando)?.subcausa
+      : draft.subcausa;
+    renderSubcausasRegistro();
+    document.getElementById('subcausaWrap').classList.remove('hidden');
+  }
+
+  // Radio: ação componente / preventiva
+  wireRadioRegistro('acaoCompGrid', v=>draft.acaoComponente = v);
+  wireRadioRegistro('acaoPrevGrid', v=>draft.acaoPreventiva = v);
+
+  // Impacto
+  document.getElementById('fImpacto').onchange = e=>{
+    draft.impacto = e.target.value;
+    if(draft.impacto === 'Crítico'){
+      if(navigator.vibrate) navigator.vibrate(80);
+    }
+  };
+}
+
+function renderSubcausasRegistro(){
+  const cont = document.getElementById('subcausas');
+  if(!cont) return;
+  cont.innerHTML = '';
+  if(!draft.categoria) return;
+  SUBCAUSAS[draft.categoria].forEach(s=>{
+    const c = document.createElement('div');
+    c.className = 'chip-opt' + (draft.subcausa === s ? ' active' : '');
+    c.textContent = s;
+    c.onclick = ()=>{
+      [...cont.children].forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+      draft.subcausa = s;
+    };
+    cont.appendChild(c);
+  });
+}
+
+function wireRadioRegistro(id, setter){
+  const el = document.getElementById(id);
+  el.addEventListener('click', e=>{
+    const c = e.target.closest('.radio-opt'); if(!c) return;
+    [...el.children].forEach(x=>x.classList.remove('active'));
+    c.classList.add('active');
+    setter(c.dataset.val);
+  });
+}
+
+function cancelarRegistro(){
+  draft = {categoria:null, subcausa:null, acaoComponente:null, acaoPreventiva:null, impacto:'Alto', foto:null, paradaEditando:null};
+  navigate('radar');
+}
+
+function processarFoto(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    draft.foto = reader.result;
+    document.getElementById('photoImg').src = draft.foto;
+    document.getElementById('photoPreview').style.display = 'inline-block';
+    if(navigator.vibrate) navigator.vibrate(20);
+  };
+  reader.readAsDataURL(file);
+}
+function removerFoto(){
+  draft.foto = null;
+  const inp = document.getElementById('fFotoInput'); if(inp) inp.value = '';
+  const prev = document.getElementById('photoPreview'); if(prev) prev.style.display = 'none';
+}
+
+/* ---------- Salvar registro ---------- */
+function salvarRegistro(){
+  const maquinaNome = document.getElementById('fMaquina').value.trim();
+  const setor = document.getElementById('fSetor').value;
+  const turno = document.getElementById('fTurno').value;
+  const duracao = document.getElementById('fDuracao').value;
+  const impacto = document.getElementById('fImpacto').value;
+  const componente = document.getElementById('fComponente').value.trim();
+  const causaRaiz = document.getElementById('fCausaRaiz').value.trim();
+  const responsavel = document.getElementById('fResponsavel').value.trim();
+  const observacao = document.getElementById('fObservacao').value.trim();
+
+  if(!maquinaNome){ toast('Informe a máquina.','red'); return; }
+  if(!setor){ toast('Selecione o setor.','red'); return; }
+  if(!draft.categoria){ toast('Selecione o tipo de falha.','red'); return; }
+  if(!draft.acaoComponente){ toast('Selecione a ação no componente.','red'); return; }
+  if(!responsavel){ toast('Informe o responsável.','red'); return; }
+
+  lastSetor = setor;
+  localStorage.setItem('ultimoSetor', setor);
+  localStorage.setItem('tecnicoNome', responsavel);
+
+  // Cria ou busca máquina pelo nome
+  let maq = db.maquinas.find(m=>m.nome.toLowerCase() === maquinaNome.toLowerCase());
+  if(!maq){
+    maq = {id:'m'+Date.now(), nome:maquinaNome, setor, prioridade:2, status:'parada', qr:''};
+    db.maquinas.push(maq);
+  }
+
+  if(draft.paradaEditando){
+    const p = db.paradas.find(x=>x.id === draft.paradaEditando);
+    if(p){
+      p.setor = setor; p.turno = turno;
+      p.duracaoMin = duracao ? parseInt(duracao,10) : p.duracaoMin;
+      p.impacto = impacto;
+      p.categoria = draft.categoria;
+      p.subcausa = draft.subcausa || '—';
+      p.componente = componente;
+      p.causaRaiz = causaRaiz;
+      p.acaoComponente = draft.acaoComponente;
+      p.acaoPreventiva = draft.acaoPreventiva || '—';
+      p.responsavel = responsavel;
+      p.observacao = observacao;
+      p.foto = draft.foto;
+      toast('Registro #'+p.numero+' atualizado','green');
+    }
+  } else {
+    const novo = {
+      id:'p'+Date.now(), numero:db.seqParada++,
+      maquinaId: maq.id, setor, turno,
+      horaInicio: Date.now(), horaFim: null, duracaoMin: duracao ? parseInt(duracao,10) : null,
+      impacto, status:'aguardando', tecnicoId:null,
+      categoria: draft.categoria, subcausa: draft.subcausa || '—',
+      componente, causaRaiz,
+      acaoComponente: draft.acaoComponente, acaoPreventiva: draft.acaoPreventiva || '—',
+      responsavel, observacao, foto: draft.foto
+    };
+    db.paradas.unshift(novo);
+    maq.status = 'parada';
+
+    // Cria OS correspondente
+    db.os.unshift({
+      id:'os'+Date.now(), paradaId: novo.id, maquinaId: maq.id,
+      titulo: causaRaiz || draft.categoria, coluna:'fila', tecnicoId:null
+    });
+
+    if(impacto === 'Crítico') alertaCritico();
+    toast(`Parada #${novo.numero} registrada · ${maquinaNome}`, impacto === 'Crítico' ? 'red' : 'green');
+
+    // Undo
+    const idNovo = novo.id;
+    registrarDesfazer(`Parada #${novo.numero} registrada`, ()=>{
+      db.paradas = db.paradas.filter(p=>p.id !== idNovo);
+      db.os = db.os.filter(o=>o.paradaId !== idNovo);
+      const m = getMaquina(maq.id); if(m) m.status = 'ok';
+    });
+  }
+
+  salvarDB();
+  draft = {categoria:null, subcausa:null, acaoComponente:null, acaoPreventiva:null, impacto:'Alto', foto:null, paradaEditando:null};
+  navigate('radar');
+}
+
+/* =========================================================
+   AÇÕES DA PARADA
+========================================================= */
+function abrirAssumir(p){
+  const m = getMaquina(p.maquinaId);
+  const opts = db.tecnicos.map(t=>`<option value="${t.id}">${t.nome} — ${t.especialidade}</option>`).join('');
+  openModal('amarelo', '🟡', `Assumir — ${m?.nome || ''}`, `
+    <div class="field"><label>Técnico responsável</label><select id="mTecnico">${opts}</select></div>
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <button class="btn block ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn block sun" onclick="confirmarAssumir('${p.id}')">Confirmar</button>
+    </div>
+  `);
+}
+function confirmarAssumir(id){
+  const p = db.paradas.find(x=>x.id===id); if(!p) return;
+  const tecnicoId = document.getElementById('mTecnico').value;
+  const antesStatus = p.status, antesTec = p.tecnicoId;
+  p.status = 'atendendo';
+  p.tecnicoId = tecnicoId;
+  const os = db.os.find(o=>o.paradaId === p.id);
+  if(os){ os.coluna = 'andamento'; os.tecnicoId = tecnicoId; }
+  salvarDB(); closeModal(); toast('Parada em atendimento','green');
+  registrarDesfazer('Atendimento iniciado', ()=>{ p.status = antesStatus; p.tecnicoId = antesTec; if(os){ os.coluna='fila'; os.tecnicoId=null; } });
+  render();
+}
+
+function abrirEncerrar(p){
+  const m = getMaquina(p.maquinaId);
+  const dur = minutosDesde(p.horaInicio);
+  draft.paradaEditando = p.id;
+  draft.categoria = p.categoria;
+  draft.subcausa = p.subcausa;
+  draft.acaoComponente = p.acaoComponente;
+  draft.acaoPreventiva = p.acaoPreventiva;
+  draft.impacto = p.impacto;
+  draft.foto = p.foto;
+
+  openModal('verde', '🟢', `Encerrar parada #${p.numero}`, `
+    <div style="background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.7; margin-bottom:14px;">
+      <b>${escapeHtml(m?.nome||'—')}</b> · ${escapeHtml(p.setor)} · ${escapeHtml(p.turno)}<br>
+      Início: ${new Date(p.horaInicio).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · Duração: <b style="color:var(--red);">${fmtDuracaoMin(dur)}</b>
+    </div>
+    <p style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Para finalizar, complete a ficha no formulário completo:</p>
+    <div style="display:flex; gap:10px;">
+      <button class="btn block ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn block green" onclick="irParaEncerramento('${p.id}')">Abrir ficha completa</button>
+    </div>
+  `);
+}
+function irParaEncerramento(id){
+  closeModal();
+  draft.paradaEditando = id;
+  const p = db.paradas.find(x=>x.id === id);
+  draft.categoria = p?.categoria || null;
+  draft.subcausa = p?.subcausa || null;
+  draft.acaoComponente = p?.acaoComponente || null;
+  draft.acaoPreventiva = p?.acaoPreventiva || null;
+  draft.impacto = p?.impacto || 'Alto';
+  draft.foto = p?.foto || null;
+  navigate('registro');
+}
+
+function abrirCorrigir(p){
+  draft.paradaEditando = p.id;
+  draft.categoria = p.categoria;
+  draft.subcausa = p.subcausa;
+  draft.acaoComponente = p.acaoComponente;
+  draft.acaoPreventiva = p.acaoPreventiva;
+  draft.impacto = p.impacto;
+  draft.foto = p.foto;
+  navigate('registro');
+}
+
+/* =========================================================
+   VIEW: MÁQUINAS
+========================================================= */
+function renderMaquinas(){
+  document.getElementById('view').innerHTML = `
+    <div class="section-head">
+      <h2>Máquinas</h2>
+      <button class="action" onclick="abrirNovaMaquina()">+ Nova máquina</button>
+    </div>
+    <div id="gridMaquinas" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px;"></div>
+  `;
+  const grid = document.getElementById('gridMaquinas');
+  if(db.maquinas.length === 0){
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">Nenhuma máquina cadastrada. Adicione a primeira.</div>`;
+    return;
+  }
+  grid.innerHTML = db.maquinas.map(m=>{
+    const parada = db.paradas.find(p=>p.maquinaId === m.id && p.status !== 'encerrada');
+    return `
+      <div class="card" style="border-left-color:${m.status==='ok'?'var(--green)':'var(--red)'};">
+        <div class="top">
+          <div>
+            <div class="title">${escapeHtml(m.nome)}</div>
+            <div class="subtitle">${escapeHtml(m.setor)} · Prioridade P${m.prioridade}</div>
+          </div>
+          <span style="font-size:10px; padding:3px 8px; border-radius:20px; font-weight:800; letter-spacing:.04em;
+            background:${m.status==='ok'?'var(--green-dim)':'var(--red-dim)'};
+            color:${m.status==='ok'?'var(--green)':'var(--red)'};">
+            ${m.status==='ok'?'OPERANDO':'PARADA'}
+          </span>
+        </div>
+        ${parada ? `<div class="subtitle" style="margin-top:6px;">Parada há ${fmtMin(Date.now()-parada.horaInicio)}</div>`:''}
+        <div class="actions">
+          <button class="btn sm ghost" onclick="registrarParaMaquina('${m.id}')">Registrar parada</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+function registrarParaMaquina(id){
+  const m = getMaquina(id); if(!m) return;
+  draft = {categoria:null, subcausa:null, acaoComponente:null, acaoPreventiva:null, impacto:'Alto', foto:null, paradaEditando:null};
+  navigate('registro');
+  setTimeout(()=>{
+    const f = document.getElementById('fMaquina');
+    if(f) f.value = m.nome;
+    const s = document.getElementById('fSetor');
+    if(s) s.value = m.setor;
+  }, 30);
+}
+function abrirNovaMaquina(){
+  openModal('', '⚙️', 'Nova máquina', `
+    <div class="field"><label>Nome</label><input id="nMaqNome" placeholder="Ex: Prensa 12"></div>
+    <div class="field" style="margin-top:12px;"><label>Setor</label>
+      <select id="nMaqSetor">${SETORES.map(s=>`<option>${s}</option>`).join('')}</select>
+    </div>
+    <div class="field" style="margin-top:12px;"><label>Prioridade</label>
+      <select id="nMaqPrio"><option value="1">P1 — Crítica</option><option value="2" selected>P2 — Alta</option><option value="3">P3 — Normal</option></select>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <button class="btn block ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn block primary" onclick="confirmarNovaMaquina()">Criar</button>
+    </div>
+  `);
+}
+function confirmarNovaMaquina(){
+  const nome = document.getElementById('nMaqNome').value.trim();
+  if(!nome){ toast('Informe o nome.','red'); return; }
+  const setor = document.getElementById('nMaqSetor').value;
+  const prioridade = parseInt(document.getElementById('nMaqPrio').value,10);
+  db.maquinas.push({id:'m'+Date.now(), nome, setor, prioridade, status:'ok', qr:''});
+  salvarDB(); closeModal(); toast('Máquina cadastrada','green'); render();
+}
+
+/* =========================================================
+   VIEW: OS (KANBAN)
+========================================================= */
+const COLUNAS = [
+  {id:'fila', nome:'A Fazer'},
+  {id:'andamento', nome:'Em Andamento'},
+  {id:'aguardando', nome:'Aguardando'},
+  {id:'concluido', nome:'Concluído'}
+];
+function renderOS(){
+  document.getElementById('view').innerHTML = `
+    <div class="section-head"><h2>Ordens de serviço</h2></div>
+    <div class="kanban" id="kanban"></div>
+  `;
+  const kanban = document.getElementById('kanban');
+  kanban.innerHTML = COLUNAS.map(c=>{
+    const items = db.os.filter(o=>o.coluna === c.id);
+    return `
+      <div class="kcol" data-col="${c.id}">
+        <h3><span>${c.nome}</span><span>${items.length}</span></h3>
+        ${items.map(o=>{
+          const m = getMaquina(o.maquinaId);
+          const t = o.tecnicoId ? getTecnico(o.tecnicoId) : null;
+          const cls = o.coluna === 'andamento' ? 'sun' : o.coluna === 'concluido' ? 'done' : '';
+          return `
+            <div class="kcard ${cls}" draggable="true" data-id="${o.id}">
+              <div class="num">#${o.id.slice(-4)}</div>
+              <div class="title">${escapeHtml(o.titulo)}</div>
+              <div class="sub">${m ? escapeHtml(m.nome) : ''}${t ? ' · '+escapeHtml(t.nome) : ''}</div>
+            </div>
+          `;
+        }).join('') || '<div class="empty" style="padding:14px; font-size:12px;">vazio</div>'}
+      </div>
+    `;
+  }).join('');
+
+  // Drag & drop
+  kanban.querySelectorAll('.kcard').forEach(card=>{
+    card.addEventListener('dragstart', e=>{
+      draggedOSId = card.dataset.id;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  kanban.querySelectorAll('.kcol').forEach(col=>{
+    col.addEventListener('dragover', e=>{ e.preventDefault(); col.classList.add('dragover'); });
+    col.addEventListener('dragleave', ()=> col.classList.remove('dragover'));
+    col.addEventListener('drop', e=>{
+      e.preventDefault();
+      col.classList.remove('dragover');
+      const os = db.os.find(o=>o.id === draggedOSId);
+      if(!os) return;
+      os.coluna = col.dataset.col;
+      const p = db.paradas.find(p=>p.id === os.paradaId);
+      if(p){
+        if(col.dataset.col === 'andamento') p.status = 'atendendo';
+        if(col.dataset.col === 'concluido' && p.status !== 'encerrada'){
+          p.status = 'encerrada';
+          p.horaFim = Date.now();
+          p.duracaoMin = Math.round((p.horaFim - p.horaInicio)/60000);
+          const m = getMaquina(p.maquinaId); if(m) m.status = 'ok';
+        }
+      }
+      salvarDB(); render();
+    });
+  });
+}
+
+/* =========================================================
+   VIEW: RELATÓRIOS
+========================================================= */
+function renderRelatorios(){
+  const encerradas = db.paradas.filter(p=>p.status === 'encerrada');
+  const totalMin = encerradas.reduce((s,p)=>s+(p.duracaoMin||0),0);
+  const mttr = encerradas.length ? Math.round(totalMin / encerradas.length) : null;
+
+  // Pareto por categoria
+  const porCat = {};
+  encerradas.forEach(p=>{
+    const c = p.categoria || 'Sem categoria';
+    porCat[c] = (porCat[c]||0) + (p.duracaoMin||0);
+  });
+  const maxCat = Math.max(...Object.values(porCat), 1);
+  const ordenado = Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
+
+  // Top máquinas
+  const porMaq = {};
+  encerradas.forEach(p=>{
+    const m = getMaquina(p.maquinaId);
+    const n = m?.nome || '—';
+    porMaq[n] = (porMaq[n]||0) + 1;
+  });
+  const topMaq = Object.entries(porMaq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  document.getElementById('view').innerHTML = `
+    <div class="section-head"><h2>Indicadores — geral</h2></div>
+    <div class="kpi-grid">
+      <div class="kpi"><b>${encerradas.length}</b><span>Paradas encerradas</span></div>
+      <div class="kpi"><b>${mttr ? mttr+'m' : '—'}</b><span>MTTR médio</span></div>
+      <div class="kpi"><b>${fmtDuracaoMin(totalMin)}</b><span>Tempo total parado</span></div>
+      <div class="kpi"><b>${db.maquinas.filter(m=>m.status==='parada').length}</b><span>Paradas agora</span></div>
+    </div>
+
+    <div class="section-head"><h2>Pareto por categoria</h2></div>
+    <div id="pareto"></div>
+
+    <div class="section-head"><h2>Top 5 — máquinas com mais paradas</h2></div>
+    <div id="topMaq" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+    <div style="margin-top:20px;">
+      <button class="btn block primary" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+    </div>
+  `;
+
+  const pareto = document.getElementById('pareto');
+  if(ordenado.length === 0){
+    pareto.innerHTML = '<div class="empty">Nenhuma parada encerrada para calcular.</div>';
+  } else {
+    pareto.innerHTML = ordenado.map(([cat, min])=>{
+      const pct = Math.round(min / maxCat * 100);
+      return `
+        <div class="pareto-row">
+          <div class="plabel"><span>${escapeHtml(cat)}</span><span>${fmtDuracaoMin(min)}</span></div>
+          <div class="ptrack"><div class="pfill" style="width:${pct}%"></div></div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  const tm = document.getElementById('topMaq');
+  if(topMaq.length === 0){
+    tm.innerHTML = '<div class="empty">Sem dados suficientes.</div>';
+  } else {
+    tm.innerHTML = topMaq.map(([nome, cnt], i)=>`
+      <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:11px 14px; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow);">
+        <span style="background:var(--red-dim); color:var(--red); width:26px; height:26px; border-radius:50%; font-weight:900; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${i+1}</span>
+        <span style="flex:1; font-weight:700; font-size:14px;">${escapeHtml(nome)}</span>
+        <span style="font-family:var(--mono); font-weight:800; color:var(--red);">${cnt}</span>
+      </div>
+    `).join('');
+  }
+}
+
+function exportarCSV(){
+  const encerradas = db.paradas.filter(p=>p.status === 'encerrada');
+  if(encerradas.length === 0){ toast('Nada para exportar ainda.','red'); return; }
+  const headers = ['Data','Nº','Máquina','Setor','Turno','Duração (min)','Impacto','Tipo de Falha','Subcausa','Componente','Causa Raiz','Ação no Componente','Ação Preventiva','Responsável','Observação'];
+  const rows = encerradas.map(p=>{
+    const m = getMaquina(p.maquinaId);
+    return [
+      new Date(p.horaInicio).toLocaleDateString('pt-BR'),
+      p.numero, m?.nome||'', p.setor, p.turno, p.duracaoMin||'',
+      p.impacto, p.categoria, p.subcausa, p.componente, p.causaRaiz,
+      p.acaoComponente, p.acaoPreventiva, p.responsavel, p.observacao
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';'))
+    .join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `paradas_seara_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('CSV exportado','green');
+}
+
+/* =========================================================
+   MODAIS
+========================================================= */
+function openModal(cor, ico, titulo, bodyHTML){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal ativo ${cor||''}" onclick="if(event.target===this) closeModal()">
+      <div class="modal-content">
+        <div class="modal-header"><span class="ico">${ico}</span>${titulo}<button class="close" onclick="closeModal()">✕</button></div>
+        ${bodyHTML}
+      </div>
+    </div>
+  `;
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){
+    closeModal();
+    if(document.getElementById('qrOverlay').classList.contains('ativo')) fecharQR();
+  }
+});
+
+/* =========================================================
+   ATENDER / VOLTOU (via Radar)
+========================================================= */
+function abrirAtender(){
+  const abertas = db.paradas.filter(p=>p.status === 'aguardando');
+  if(abertas.length === 0){ toast('Nenhuma parada aguardando.','green'); return; }
+  const html = abertas.map(p=>{
+    const m = getMaquina(p.maquinaId);
+    return `
+      <button class="card" style="text-align:left; cursor:pointer; border:none; width:100%; font-family:inherit; padding:14px; margin-bottom:10px; border-left:4px solid var(--red); background:var(--panel);" onclick="closeModal(); abrirAssumir(${JSON.stringify(p.id)});">
+        <div class="top">
+          <div>
+            <div class="title">#${p.numero} · ${escapeHtml(m?.nome||'—')}</div>
+            <div class="subtitle">${escapeHtml(p.setor)} · parada há ${fmtMin(Date.now()-p.horaInicio)}</div>
+          </div>
+        </div>
+      </button>
+    `;
+  }).join('');
+  openModal('amarelo', '🟡', 'Assumir parada', html);
+}
+
+function abrirVoltou(){
+  const emAtend = db.paradas.filter(p=>p.status === 'atendendo' || p.status === 'aguardando');
+  if(emAtend.length === 0){ toast('Nenhuma parada em andamento.','green'); return; }
+  const html = emAtend.map(p=>{
+    const m = getMaquina(p.maquinaId);
+    return `
+      <button class="card" style="text-align:left; cursor:pointer; border:none; width:100%; font-family:inherit; padding:14px; margin-bottom:10px; border-left:4px solid ${p.status==='atendendo'?'var(--sun)':'var(--red)'}; background:var(--panel);" onclick="closeModal(); irParaEncerramento('${p.id}');">
+        <div class="top">
+          <div>
+            <div class="title">#${p.numero} · ${escapeHtml(m?.nome||'—')}</div>
+            <div class="subtitle">${p.status === 'atendendo' ? '🟡 Em atendimento' : '🔴 Aguardando'} · ${fmtMin(Date.now()-p.horaInicio)}</div>
+          </div>
+        </div>
+      </button>
+    `;
+  }).join('');
+  openModal('verde', '🟢', 'Encerrar parada', html);
+}
+
+/* =========================================================
+   QR SCANNER
+========================================================= */
+async function abrirQR(){
+  if(!window.jsQR){ toast('Leitor QR não carregou. Digite o nome.','red'); return; }
+  document.getElementById('qrOverlay').classList.add('ativo');
+  document.getElementById('qrHint').textContent = 'Procurando código…';
+  try{
+    qrStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const video = document.getElementById('qrVideo');
+    video.srcObject = qrStream;
+    await video.play();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    function loop(){
+      if(video.readyState === video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = window.jsQR(img.data, img.width, img.height);
+        if(code && code.data){
+          const codigo = code.data.trim();
+          // Tenta achar máquina por QR ou nome
+          let maq = db.maquinas.find(m=>m.qr === codigo || m.nome.toLowerCase() === codigo.toLowerCase());
+          if(!maq){
+            maq = {id:'m'+Date.now(), nome:codigo, setor:'', prioridade:2, status:'parada', qr:codigo};
+            db.maquinas.push(maq);
+            salvarDB();
+          }
+          const f = document.getElementById('fMaquina');
+          if(f) f.value = maq.nome;
+          const s = document.getElementById('fSetor');
+          if(s && maq.setor) s.value = maq.setor;
+          document.getElementById('qrHint').textContent = '✅ '+codigo;
+          if(navigator.vibrate) navigator.vibrate(50);
+          toast('Máquina identificada: '+maq.nome,'green');
+          setTimeout(fecharQR, 500);
+          return;
+        }
+      }
+      qrLoopId = requestAnimationFrame(loop);
+    }
+    loop();
+  }catch(err){
+    document.getElementById('qrHint').textContent = 'Câmera indisponível — digite manualmente.';
+    toast('Não foi possível acessar a câmera.','red');
+  }
+}
+function fecharQR(){
+  document.getElementById('qrOverlay').classList.remove('ativo');
+  if(qrLoopId) cancelAnimationFrame(qrLoopId);
+  if(qrStream){ qrStream.getTracks().forEach(t=>t.stop()); qrStream = null; }
+}
+
+/* =========================================================
+   DITADO POR VOZ
+========================================================= */
+function toggleDitado(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ toast('Ditado não suportado neste navegador.','red'); return; }
+  const btn = document.getElementById('btnMic');
+  if(ditando){ reconhecimento?.stop(); return; }
+  reconhecimento = new SR();
+  reconhecimento.lang = 'pt-BR';
+  reconhecimento.continuous = true;
+  reconhecimento.interimResults = true;
+  const base = document.getElementById('fCausaRaiz').value;
+  reconhecimento.onstart = ()=>{ ditando = true; btn.classList.add('rec'); toast('🎤 Ouvindo…'); };
+  reconhecimento.onresult = ev=>{
+    let txt = '';
+    for(let i=0; i<ev.results.length; i++) txt += ev.results[i][0].transcript;
+    document.getElementById('fCausaRaiz').value = (base ? base+' ' : '') + txt;
+  };
+  reconhecimento.onerror = ()=>{};
+  reconhecimento.onend = ()=>{ ditando = false; btn?.classList.remove('rec'); };
+  reconhecimento.start();
+}
+
+/* =========================================================
+   INIT
+========================================================= */
+atualizarRede();
+navigate('radar');
+
+/* Aviso de saída se tiver paradas em aberto */
+window.addEventListener('beforeunload', e=>{
+  if(db.paradas.filter(p=>p.status !== 'encerrada').length > 0){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+</script>
+</body>
+</html>

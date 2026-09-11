@@ -1,0 +1,68 @@
+/* ==========================================================================
+   card.css — cartões genéricos (parada, kanban base) + estado vazio
+   ========================================================================== */
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px; margin-bottom:10px;
+  box-shadow:var(--shadow);
+  border-left:4px solid var(--muted-2);
+}
+
+/* Estados por severidade / status */
+.card.crit{
+  border-left-color:var(--red);
+  background:linear-gradient(180deg,var(--red-dim) 0%, var(--panel) 60px);
+}
+.card.warn{border-left-color:var(--amber);}
+.card.atendendo{border-left-color:var(--sun);}
+
+/* Estrutura interna */
+.card .top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+.card .title{font-size:15.5px; font-weight:700; display:flex; align-items:center; gap:6px;}
+.card .subtitle{color:var(--muted); font-size:12px; margin-top:2px;}
+
+/* Bloco de tempo decorrido */
+.card .tempo{
+  font-family:var(--mono);
+  font-size:14px; font-weight:800; text-align:right;
+  color:var(--red); background:var(--red-dim);
+  padding:6px 10px; border-radius:8px;
+  white-space:nowrap;
+}
+.card.warn .tempo{color:var(--amber); background:var(--amber-dim);}
+.card.atendendo .tempo{color:var(--sun-dark); background:var(--sun-dim);}
+.card .tempo .lbl{
+  display:block;
+  font-size:9.5px; color:var(--muted); font-weight:600;
+  margin-bottom:1px;
+  text-transform:uppercase; letter-spacing:.04em;
+  text-align:right;
+}
+
+/* Meta-informações */
+.card .meta{
+  display:flex; gap:12px; margin-top:8px;
+  font-size:12px; color:var(--muted); flex-wrap:wrap;
+}
+.card .meta b{color:var(--text); font-weight:600;}
+
+/* Ações */
+.card .actions{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;}
+
+/* Thumbnail (foto da parada) */
+.card .thumb{
+  width:40px; height:40px; border-radius:8px;
+  object-fit:cover; border:1px solid var(--border); flex-shrink:0;
+}
+
+/* ---------- Estado vazio ---------- */
+.empty{
+  color:var(--muted); font-size:13px; text-align:center;
+  padding:28px 16px;
+  background:var(--panel-2);
+  border:1px dashed var(--border-2);
+  border-radius:12px;
+}

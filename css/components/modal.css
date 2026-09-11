@@ -1,0 +1,56 @@
+/* ==========================================================================
+   modal.css — bottom sheets (mobile) / dialog centralizado (desktop)
+   ========================================================================== */
+
+.modal{
+  display:none;
+  position:fixed; inset:0;
+  background:rgba(26,22,20,.55);
+  z-index:100;
+  justify-content:center; align-items:flex-end;
+}
+.modal.ativo{display:flex; animation:fadeIn .16s ease;}
+
+.modal-content{
+  background:var(--panel);
+  border-radius:18px 18px 0 0;
+  width:100%; max-width:560px;
+  max-height:92vh; overflow-y:auto;
+  padding:22px 20px 26px;
+  animation:slideUp .2s ease;
+  border-top:4px solid var(--red);
+  box-shadow:0 -8px 40px rgba(0,0,0,.18);
+}
+
+/* Variantes de cor (top border) */
+.modal.amarelo .modal-content{border-top-color:var(--sun-dark);}
+.modal.verde   .modal-content{border-top-color:var(--green);}
+
+/* Header interno */
+.modal-header{
+  font-size:17px; font-weight:900;
+  margin-bottom:18px;
+  display:flex; align-items:center; gap:10px;
+}
+.modal-header .ico{font-size:22px;}
+.modal-header .close{
+  margin-left:auto;
+  background:var(--panel-2); border:none;
+  width:32px; height:32px; border-radius:50%;
+  color:var(--muted); font-size:16px;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+
+/* Animações */
+@keyframes fadeIn{from{opacity:0} to{opacity:1}}
+@keyframes slideUp{
+  from{transform:translateY(24px); opacity:0;}
+  to  {transform:translateY(0);    opacity:1;}
+}
+
+/* Desktop: dialog centralizado */
+@media (min-width:640px){
+  .modal{align-items:center;}
+  .modal-content{border-radius:16px;}
+}

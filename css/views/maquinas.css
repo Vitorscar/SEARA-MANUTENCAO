@@ -1,0 +1,7 @@
+/* ==========================================================================
+   maquinas.css — ajustes específicos da view Máquinas
+   O grid atual é definido inline no JS (grid-template-columns auto-fill).
+   Aqui ficam overrides e refinamentos.
+   ========================================================================== */
+
+/* Reservado para tweaks futuros (ex.: card destacado para máquina crítica). */

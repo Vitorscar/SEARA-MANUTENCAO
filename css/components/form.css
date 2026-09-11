@@ -1,0 +1,154 @@
+/* ==========================================================================
+   form.css — campos, cards de formulário, categoria/subcausa, rádio, foto
+   ========================================================================== */
+
+/* ---------- Card de seção do formulário ---------- */
+.form-card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  margin-bottom:14px;
+}
+.form-card .head{
+  padding:13px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+  background:var(--panel-2);
+}
+.form-card .head h3{
+  font-size:13.5px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.03em;
+}
+.form-card .head .dot{
+  width:9px; height:9px; border-radius:50%;
+  background:var(--red);
+}
+.form-card .body{padding:16px;}
+
+/* ---------- Grid de campos ---------- */
+.field-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px;}
+
+/* ---------- Campo individual ---------- */
+.field{display:flex; flex-direction:column; gap:5px;}
+.field label{
+  font-size:11.5px; font-weight:700;
+  color:var(--muted);
+  text-transform:uppercase; letter-spacing:.04em;
+}
+.field input,
+.field select,
+.field textarea{
+  width:100%;
+  background:var(--panel);
+  border:1.5px solid var(--border);
+  color:var(--text);
+  padding:11px 12px; border-radius:9px;
+  font-size:14.5px;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus{
+  outline:none;
+  border-color:var(--red);
+  box-shadow:0 0 0 3px rgba(200,16,46,.1);
+}
+.field textarea{min-height:64px; resize:vertical;}
+
+/* Campo com botão acoplado (QR, mic) */
+.field .with-btn{display:flex; gap:8px; align-items:stretch;}
+.field .with-btn > *:first-child{flex:1; min-width:0;}
+.field .icon-btn{
+  background:var(--panel-2);
+  border:1.5px solid var(--border);
+  color:var(--text);
+  min-width:46px; border-radius:9px;
+  font-size:18px;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.field .icon-btn.rec{
+  background:var(--red); color:#fff; border-color:var(--red);
+  animation:recPulse .8s infinite;
+}
+.field .icon-btn svg{width:20px; height:20px;}
+
+@keyframes recPulse{50%{opacity:.5}}
+
+/* ---------- Categoria (grid de botões) ---------- */
+.cat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
+.cat-btn{
+  border:1.5px solid var(--border);
+  background:var(--panel); color:var(--text);
+  border-radius:10px; padding:11px 11px;
+  font-size:12.5px; font-weight:700;
+  text-align:left; font-family:inherit;
+  transition:all .12s;
+}
+.cat-btn small{
+  display:block;
+  font-weight:500; color:var(--muted);
+  font-size:10px; margin-top:2px;
+}
+.cat-btn.active{
+  border-color:var(--red);
+  background:var(--red-dim);
+  color:var(--red-dark);
+}
+.cat-btn.active small{color:var(--red);}
+.cat-btn.proj{grid-column:1/-1;}
+
+/* ---------- Subcausas (chips) ---------- */
+.chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:10px;}
+.chip-opt{
+  border:1.5px solid var(--border);
+  background:var(--panel); color:var(--muted);
+  border-radius:20px; padding:7px 13px;
+  font-size:12px; font-weight:700;
+  cursor:pointer; font-family:inherit;
+  transition:all .12s;
+}
+.chip-opt.active{background:var(--red); border-color:var(--red); color:#fff;}
+.chip-opt:hover:not(.active){border-color:var(--border-2);}
+
+/* ---------- Rádios (ação / impacto) ---------- */
+.radio-row{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.radio-row.three{grid-template-columns:1fr;}
+@media (min-width:640px){
+  .radio-row.three{grid-template-columns:repeat(3,1fr);}
+}
+
+.radio-opt{
+  border:1.5px solid var(--border);
+  background:var(--panel); color:var(--text);
+  border-radius:10px; padding:12px 10px;
+  font-size:13px; font-weight:700;
+  text-align:center; cursor:pointer; font-family:inherit;
+  transition:all .12s;
+}
+.radio-opt.active{
+  border-color:var(--red);
+  background:var(--red-dim);
+  color:var(--red-dark);
+}
+
+/* Variantes por impacto */
+.radio-opt.impacto-baixo.active  {border-color:var(--green);    background:var(--green-dim);    color:var(--green);}
+.radio-opt.impacto-medio.active  {border-color:var(--sun-dark); background:var(--sun-dim);      color:var(--sun-dark);}
+.radio-opt.impacto-alto.active   {border-color:var(--amber);    background:var(--amber-dim);    color:var(--amber);}
+.radio-opt.impacto-critico.active{border-color:var(--red);      background:var(--red);          color:#fff;}
+
+/* ---------- Foto (preview) ---------- */
+.photo-preview{margin-top:10px; position:relative; display:inline-block;}
+.photo-preview img{
+  max-width:100%; max-height:150px;
+  border-radius:10px; border:1.5px solid var(--border);
+  display:block;
+}
+.photo-preview button{
+  position:absolute; top:6px; right:6px;
+  background:rgba(0,0,0,.7); border:none; color:#fff;
+  width:28px; height:28px; border-radius:50%;
+  cursor:pointer; font-size:13px;
+}
