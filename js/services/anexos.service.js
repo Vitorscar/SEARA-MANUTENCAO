@@ -158,3 +158,18 @@ export function formatarPeso(bytes){
   if(bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
+import { api } from '../data/api.js';
+
+/* Após salvar uma parada, sobe os anexos para o Storage */
+export async function uploadPendentes(paradaId, anexos){
+  const resultados = [];
+  for(const a of anexos || []){
+    try {
+      const path = await api.uploadAnexo(paradaId, a);
+      resultados.push({ ...a, storagePath: path });
+    } catch(err){
+      console.error('Falha ao subir anexo:', err);
+    }
+  }
+  return resultados;
+}

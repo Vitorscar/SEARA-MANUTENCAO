@@ -152,3 +152,24 @@
   width:28px; height:28px; border-radius:50%;
   cursor:pointer; font-size:13px;
 }
+/* ---------- Chapa (modal) ---------- */
+.chapa-input-modal{
+  font-family: var(--mono) !important;
+  font-size: 18px !important;
+  letter-spacing: .15em !important;
+  text-align: center !important;
+  font-weight: 700;
+}
+
+/* ---------- Erro de formulário ---------- */
+.form-erro{
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--red-dim);
+  border-left: 3px solid var(--red);
+  border-radius: 8px;
+  color: var(--red-dark);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.hidden{ display:none !important; }

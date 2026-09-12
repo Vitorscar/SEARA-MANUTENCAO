@@ -9,14 +9,17 @@ import { fmtMin, fmtDuracaoMin, escapeHtml } from '../core/utils.js';
 
 let filtro = { ordenarPor: 'data', direcao: 'desc' };
 
-export function renderTecnico({ id } = {}){
+export function renderTecnico(params = {}){
+  const id = params?.id
+           || state.tecnicoAtualId
+           || state.currentParams?.id;
   const t = getTecnico(id);
   if(!t){
     document.getElementById('view').innerHTML =
       `<div class="empty">Funcionário não encontrado.</div>`;
     return;
   }
-
+  
   const st = statusTecnico(t.id);
   const paradas = state.db.paradas.filter(p => p.tecnicoId === t.id);
   const encerradas = paradas.filter(p => p.status === 'encerrada');

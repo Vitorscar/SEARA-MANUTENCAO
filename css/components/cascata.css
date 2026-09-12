@@ -1,0 +1,36 @@
+/* ==========================================================================
+   cascata.css — seletor hierárquico Setor → Área → Equipamento → Variante
+   ========================================================================== */
+
+.cascata{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+@media (min-width:640px){
+  .cascata{grid-template-columns:1fr 1fr;}
+  .cascata .field.full{grid-column:1/-1;}
+}
+
+.cascata .field label{font-size:11.5px; font-weight:700;}
+
+.cascata-preview{
+  margin-top:14px;
+  padding:11px 14px;
+  background:var(--red-dim);
+  border-left:3px solid var(--red);
+  border-radius:8px;
+  font-size:13px;
+  color:var(--red-dark);
+  min-height:0;
+  line-height:1.4;
+  word-break:break-word;
+}
+.cascata-preview:empty{display:none;}
+.cascata-preview b{font-weight:800;}
+
+/* Destaque sutil no input quando o setor é dinâmico */
+.cascata input[list="listaEquipamentos"]:focus{
+  border-color:var(--red);
+  box-shadow:0 0 0 3px rgba(200,16,46,.1);
+}

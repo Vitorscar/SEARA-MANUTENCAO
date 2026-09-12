@@ -4,15 +4,20 @@
 
 import { state, novoDraft, getMaquina, salvarDB } from '../core/state.js';
 import { navigate } from '../core/router.js';
-import { openModal, closeModal } from '../ui/modal.js';
 import { toast } from '../ui/toast.js';
 import { registrarDesfazer } from '../ui/undo.js';
 import { criarParada, atualizarParada } from '../services/paradas.service.js';
 import { toggleDitado } from '../services/voz.service.js';
 import { alertaCritico } from '../services/audio.service.js';
 import { escapeHtml, turnoAtual } from '../core/utils.js';
-import { SUBCAUSAS, SETORES, COMPONENTES_SUG, IMPACTOS, TURNOS } from '../data/constants.js';
+import { SUBCAUSAS, COMPONENTES_SUG, IMPACTOS, TURNOS } from '../data/constants.js';
 import { optionsFrom, datalist } from '../components/form-fields.js';
+
+import {
+  getSetores, getAreas, setorTemAreas, setorEhDinamico,
+  getEquipamentos, getVariantes, comporNomeEquipamento,
+  registrarEquipamentoAprendido
+} from '../services/estrutura.service.js';
 
 import {
   processarFoto,
@@ -52,12 +57,6 @@ export function renderRegistro(){
       <div class="body">
         <div class="field-grid cols-5">
           <div class="field"><label>Data</label><input type="date" id="fData" value="${dataStr}" ${p?'disabled':''}></div>
-          <div class="field"><label>Setor</label>
-            <select id="fSetor">
-              <option value="">Selecione…</option>
-              ${optionsFrom(SETORES, p?.setor || state.lastSetor)}
-            </select>
-          </div>
           <div class="field"><label>Turno (SS)</label>
             <select id="fTurno">${optionsFrom(TURNOS, p?.turno || turnoAtual())}</select>
           </div>
@@ -69,20 +68,52 @@ export function renderRegistro(){
       </div>
     </div>
 
-    <!-- Máquina -->
+    <!-- ============ Local e equipamento (cascata) ============ -->
     <div class="form-card">
-      <div class="head"><span class="dot"></span><h3>Máquina</h3></div>
+      <div class="head"><span class="dot"></span><h3>Local e equipamento</h3></div>
       <div class="body">
-        <div class="field">
-          <label>Máquina</label>
-          <div class="with-btn">
-            <input type="text" id="fMaquina" list="listaMaquinas" placeholder="Nome ou escaneie o QR…" value="${escapeHtml(p ? (getMaquina(p.maquinaId)?.nome || '') : '')}" autocomplete="off">
-            <button type="button" class="icon-btn" onclick="abrirQR()" title="Escanear QR">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
-            </button>
+        <div class="cascata">
+
+          <div class="field">
+            <label>Setor</label>
+            <select id="fSetorCascata" required>
+              <option value="">Selecione…</option>
+              ${getSetores().map(s =>
+                `<option ${(p?.setor === s) || (!p && state.lastSetor === s) ? 'selected' : ''}>${s}</option>`
+              ).join('')}
+            </select>
           </div>
-          ${datalist('listaMaquinas', state.db.maquinas.map(m => m.nome))}
+
+          <div class="field hidden" id="wrapArea">
+            <label>Área</label>
+            <select id="fArea"></select>
+          </div>
+
+          <div class="field full">
+            <label>Equipamento</label>
+            <div class="with-btn">
+              <input type="text" id="fEquipamento" list="listaEquipamentos"
+                     placeholder="Digite, selecione ou escaneie o QR…"
+                     autocomplete="off"
+                     value="${escapeHtml(p ? (getMaquina(p.maquinaId)?.nome || '') : '')}">
+              <button type="button" class="icon-btn" onclick="abrirQR()" title="Escanear QR">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+                  <rect x="8" y="8" width="8" height="8" rx="1"/>
+                </svg>
+              </button>
+            </div>
+            <datalist id="listaEquipamentos"></datalist>
+          </div>
+
+          <div class="field hidden" id="wrapVariante">
+            <label>Linha / Variante</label>
+            <select id="fVariante"></select>
+          </div>
         </div>
+
+        <div class="cascata-preview" id="cascataPreview"></div>
       </div>
     </div>
 
@@ -246,6 +277,8 @@ function wireRegistro(){
     state.draft.impacto = e.target.value;
     if(state.draft.impacto === 'Crítico' && navigator.vibrate) navigator.vibrate(80);
   };
+
+  wireCascata();
 }
 
 function renderSubcausas(){
@@ -274,6 +307,123 @@ function wireRadio(id, setter){
     c.classList.add('active');
     setter(c.dataset.val);
   });
+}
+
+/* =========================================================
+   CASCATA: Setor → Área → Equipamento → Variante
+   ========================================================= */
+function wireCascata(){
+  const setorEl = document.getElementById('fSetorCascata');
+  const areaEl  = document.getElementById('fArea');
+  const eqEl    = document.getElementById('fEquipamento');
+  const varEl   = document.getElementById('fVariante');
+
+  setorEl?.addEventListener('change', () => onSetorChange());
+  areaEl?.addEventListener('change',  () => onAreaChange());
+  eqEl?.addEventListener('input',    () => onEquipamentoChange());
+  eqEl?.addEventListener('change',   () => onEquipamentoChange());
+  varEl?.addEventListener('change',  () => atualizarPreview());
+
+  popularCascataInicial();
+}
+
+function popularCascataInicial(){
+  const setorEl = document.getElementById('fSetorCascata');
+  if(!setorEl) return;
+
+  const setor = setorEl.value;
+  if(!setor) return;
+
+  /* Se veio de edição, restaura a árvore a partir do setor salvo */
+  if(setorTemAreas(setor)){
+    const areaEl = document.getElementById('fArea');
+    const wrapArea = document.getElementById('wrapArea');
+    wrapArea.classList.remove('hidden');
+    areaEl.innerHTML = '<option value="">Selecione…</option>' +
+      getAreas(setor).map(a => `<option>${a}</option>`).join('');
+  }
+
+  atualizarEquipamentosDisponiveis();
+  atualizarPreview();
+}
+
+function onSetorChange(){
+  const setorEl = document.getElementById('fSetorCascata');
+  const setor = setorEl.value;
+  state.draft.setor = setor;
+
+  const wrapArea = document.getElementById('wrapArea');
+  const selArea  = document.getElementById('fArea');
+
+  if(setorTemAreas(setor)){
+    wrapArea.classList.remove('hidden');
+    selArea.innerHTML = '<option value="">Selecione…</option>' +
+      getAreas(setor).map(a => `<option>${a}</option>`).join('');
+    selArea.value = '';
+  } else {
+    wrapArea.classList.add('hidden');
+    selArea.innerHTML = '';
+  }
+
+  document.getElementById('fEquipamento').value = '';
+  document.getElementById('wrapVariante').classList.add('hidden');
+  atualizarEquipamentosDisponiveis();
+  atualizarPreview();
+}
+
+function onAreaChange(){
+  document.getElementById('fEquipamento').value = '';
+  document.getElementById('wrapVariante').classList.add('hidden');
+  atualizarEquipamentosDisponiveis();
+  atualizarPreview();
+}
+
+function atualizarEquipamentosDisponiveis(){
+  const setor = document.getElementById('fSetorCascata').value;
+  const area  = document.getElementById('fArea')?.value || null;
+  const lista = getEquipamentos(setor, area);
+
+  const datalistEl = document.getElementById('listaEquipamentos');
+  datalistEl.innerHTML = lista.map(e => `<option value="${e.replace(/"/g, '&quot;')}">`).join('');
+
+  const inp = document.getElementById('fEquipamento');
+  inp.placeholder = setorEhDinamico(setor)
+    ? 'Digite o nome do equipamento (novo será cadastrado)…'
+    : 'Digite ou selecione…';
+}
+
+function onEquipamentoChange(){
+  const setor = document.getElementById('fSetorCascata').value;
+  const area  = document.getElementById('fArea')?.value || null;
+  const equip = document.getElementById('fEquipamento').value.trim();
+
+  const variantes = getVariantes(setor, area, equip);
+  const wrap = document.getElementById('wrapVariante');
+  const sel  = document.getElementById('fVariante');
+
+  if(variantes.length > 0){
+    wrap.classList.remove('hidden');
+    sel.innerHTML = '<option value="">Selecione…</option>' +
+      variantes.map(v => `<option>${v}</option>`).join('');
+    sel.value = '';
+  } else {
+    wrap.classList.add('hidden');
+    sel.innerHTML = '';
+  }
+
+  atualizarPreview();
+}
+
+function atualizarPreview(){
+  const setor = document.getElementById('fSetorCascata')?.value;
+  const area  = document.getElementById('fArea')?.value;
+  const equip = document.getElementById('fEquipamento')?.value.trim();
+  const variante = document.getElementById('fVariante')?.value;
+  const el = document.getElementById('cascataPreview');
+  if(!el) return;
+
+  const partes = [setor, area, equip, variante].filter(Boolean);
+  el.innerHTML = partes.length ? `📌 <b>${partes.join(' · ')}</b>` : '';
 }
 
 /* =========================================================
@@ -420,9 +570,20 @@ function renderAnexosLista(){
    Salvar
    ========================================================= */
 export function salvarRegistro(){
+  /* ---- Lê da cascata ---- */
+  const setor       = document.getElementById('fSetorCascata').value;
+  const area        = document.getElementById('fArea')?.value || '';
+  const equipamento = document.getElementById('fEquipamento').value.trim();
+  const variante    = document.getElementById('fVariante')?.value || '';
+  const maquinaNome = comporNomeEquipamento(equipamento, variante);
+
   const dados = {
-    maquinaNome: document.getElementById('fMaquina').value.trim(),
-    setor:       document.getElementById('fSetor').value,
+    maquinaNome,
+    setor,
+    area,                  /* guardado para histórico/futuro */
+    equipamentoBase: equipamento,
+    variante,
+
     turno:       document.getElementById('fTurno').value,
     duracao:     document.getElementById('fDuracao').value,
     impacto:     document.getElementById('fImpacto').value,
@@ -430,6 +591,7 @@ export function salvarRegistro(){
     causaRaiz:   document.getElementById('fCausaRaiz').value.trim(),
     responsavel: document.getElementById('fResponsavel').value.trim(),
     observacao:  document.getElementById('fObservacao').value.trim(),
+
     categoria:      state.draft.categoria,
     subcausa:       state.draft.subcausa,
     acaoComponente: state.draft.acaoComponente,
@@ -438,15 +600,21 @@ export function salvarRegistro(){
     anexos:         state.draft.anexos || []
   };
 
-  if(!dados.maquinaNome){ toast('Informe a máquina.', 'red'); return; }
-  if(!dados.setor){ toast('Selecione o setor.', 'red'); return; }
+  /* ---- Validações ---- */
+  if(!setor){ toast('Selecione o setor.', 'red'); return; }
+  if(!equipamento){ toast('Informe o equipamento.', 'red'); return; }
   if(!dados.categoria){ toast('Selecione o tipo de falha.', 'red'); return; }
   if(!dados.acaoComponente){ toast('Selecione a ação no componente.', 'red'); return; }
   if(!dados.responsavel){ toast('Informe o responsável.', 'red'); return; }
 
-  state.lastSetor = dados.setor;
-  localStorage.setItem('ultimoSetor', dados.setor);
+  state.lastSetor = setor;
+  localStorage.setItem('ultimoSetor', setor);
   localStorage.setItem('tecnicoNome', dados.responsavel);
+
+  /* ---- APRENDIZADO: Industrializador memoriza o equipamento ---- */
+  if(setorEhDinamico(setor)){
+    registrarEquipamentoAprendido(setor, equipamento);
+  }
 
   if(state.draft.paradaEditando){
     const p = atualizarParada(state.draft.paradaEditando, dados, {
@@ -460,7 +628,7 @@ export function salvarRegistro(){
   } else {
     const { parada } = criarParada(dados);
     if(parada.impacto === 'Crítico') alertaCritico();
-    toast(`Parada #${parada.numero} registrada · ${dados.maquinaNome}`,
+    toast(`Parada #${parada.numero} registrada · ${maquinaNome}`,
           parada.impacto === 'Crítico' ? 'red' : 'green');
 
     const idNovo = parada.id;

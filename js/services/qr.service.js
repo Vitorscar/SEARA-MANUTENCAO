@@ -34,7 +34,11 @@ export async function abrirQR(){
             state.db.maquinas.push(maq);
             salvarDB();
           }
-          const f = document.getElementById('fMaquina'); if(f) f.value = maq.nome;
+          const f = document.getElementById('fEquipamento') || document.getElementById('fMaquina');
+if(f){
+  f.value = maq.nome;
+  f.dispatchEvent(new Event('change', { bubbles: true }));
+}
           const s = document.getElementById('fSetor');   if(s && maq.setor) s.value = maq.setor;
 
           document.getElementById('qrHint').textContent = '✅ ' + codigo;

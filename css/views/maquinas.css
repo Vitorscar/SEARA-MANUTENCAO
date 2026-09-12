@@ -1,7 +1,186 @@
 /* ==========================================================================
-   maquinas.css — ajustes específicos da view Máquinas
-   O grid atual é definido inline no JS (grid-template-columns auto-fill).
-   Aqui ficam overrides e refinamentos.
+   maquinas.css — lista agrupada por setor → área
    ========================================================================== */
 
-/* Reservado para tweaks futuros (ex.: card destacado para máquina crítica). */
+.filtros-bar {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+
+.input-mini {
+  flex: 1; min-width: 130px;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-mini:focus {
+  outline: none; border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.1);
+}
+
+/* ---------- Bloco de setor ---------- */
+.setor-bloco {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.setor-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px;
+  background: var(--red-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.setor-titulo {
+  font-size: 14px; font-weight: 900;
+  color: var(--red-dark);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+.setor-count {
+  font-family: var(--mono);
+  font-size: 12px; font-weight: 800;
+  background: var(--red); color: #fff;
+  padding: 2px 9px; border-radius: 20px;
+}
+
+.area-bloco { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.area-bloco:last-child { border-bottom: none; }
+
+.area-titulo {
+  font-size: 11.5px; font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+/* ---------- Grid de máquinas ---------- */
+.maq-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+@media (min-width: 640px) { .maq-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1000px) { .maq-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.maq-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-radius: 10px;
+  padding: 11px 13px;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Separação de estilo: JS adiciona a classe, CSS aplica a cor */
+.maq-card.is-operando { border-left-color: var(--green); }
+.maq-card.is-parada    { border-left-color: var(--red); }
+
+.maq-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(26, 22, 20, 0.08);
+}
+
+.maq-top {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+}
+
+.maq-nome {
+  font-size: 13.5px; font-weight: 800;
+  color: var(--ink);
+  line-height: 1.3;
+  min-width: 0; flex: 1;
+  overflow: hidden; text-overflow: ellipsis;
+  word-break: break-word; /* Evita que nomes longos sem espaço quebrem o layout */
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2; /* Padrão moderno */
+}
+
+.maq-badge {
+  font-size: 9.5px; font-weight: 900;
+  padding: 3px 8px; border-radius: 20px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.maq-badge.ok    { background: var(--green-dim); color: var(--green); }
+.maq-badge.parada{ background: var(--red-dim);   color: var(--red); }
+
+.maq-meta {
+  font-size: 11px; color: var(--muted); font-weight: 600;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.maq-qr {
+  font-family: var(--mono);
+  font-size: 10.5px; color: var(--muted-2);
+  background: var(--panel); padding: 1px 5px; border-radius: 4px;
+}
+
+.maq-parada-info {
+  font-size: 11.5px; color: var(--red);
+  background: var(--red-dim);
+  padding: 6px 9px; border-radius: 6px;
+  font-weight: 700;
+  display: flex; align-items: center; gap: 4px;
+}
+.maq-parada-info b { font-family: var(--mono); }
+
+.maq-actions {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: auto; /* Empurra botões para o fundo do card */
+}
+.maq-actions .btn {
+  padding: 6px 10px; font-size: 11.5px; flex: 1; text-align: center;
+}
+
+/* ---------- Histórico (modal) ---------- */
+.hist-list {
+  max-height: 60vh; overflow-y: auto;
+  padding-right: 4px; /* Espaço para scrollbar não colar no texto */
+}
+
+.hist-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px; align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.hist-item:last-child { border-bottom: none; }
+
+.hist-data {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--muted); white-space: nowrap;
+}
+
+.hist-desc {
+  color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.hist-status {
+  font-size: 10px; font-weight: 800;
+  padding: 3px 8px; border-radius: 20px;
+  white-space: nowrap; text-transform: uppercase;
+}
+.hist-status.encerrada  { background: var(--green-dim); color: var(--green); }
+.hist-status.atendendo  { background: var(--sun-dim);   color: var(--sun-dark); }
+.hist-status.aguardando { background: var(--red-dim);   color: var(--red); }
