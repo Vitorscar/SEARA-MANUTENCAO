@@ -1,23 +1,20 @@
 /* =========================================================
-   registro.view.js — formulário de registro / correção
+   registro.view.js — formulário completo
+   Seções: Identificação · Tipo de Falha · Componente · Ação · Anexos · Fechamento
    ========================================================= */
 
-import { state, novoDraft, getMaquina, salvarDB } from '../core/state.js';
-import { navigate } from '../core/router.js';
-import { toast } from '../ui/toast.js';
-import { registrarDesfazer } from '../ui/undo.js';
-import { criarParada, atualizarParada } from '../services/paradas.service.js';
-import { toggleDitado } from '../services/voz.service.js';
-import { alertaCritico } from '../services/audio.service.js';
-import { escapeHtml, turnoAtual } from '../core/utils.js';
-import { SUBCAUSAS, COMPONENTES_SUG, IMPACTOS, TURNOS } from '../data/constants.js';
-import { optionsFrom, datalist } from '../components/form-fields.js';
+import { state, salvarDB, novoDraft, getMaquina } from '../core/state.js';
+import { navigate }                    from '../core/router.js';
+import { toast }                       from '../ui/toast.js';
+import { escapeHtml, turnoAtual }      from '../core/utils.js';
+import { toggleDitado }                from '../services/voz.service.js';
 
 import {
-  getSetores, getAreas, setorTemAreas, setorEhDinamico,
-  getEquipamentos, getVariantes, comporNomeEquipamento,
-  registrarEquipamentoAprendido
-} from '../services/estrutura.service.js';
+  TURNOS, IMPACTOS, TIPOS_FALHA, CAUSAS_RAIZ,
+  ACOES_COMPONENTE, ACOES_PREVENTIVAS, COMPONENTES_SUG
+} from '../data/constants.js';
+
+import { criarParada, atualizarParada } from '../services/paradas.service.js';
 
 import {
   processarFoto,
@@ -32,402 +29,308 @@ import {
 } from '../services/anexos.service.js';
 
 /* =========================================================
-   VIEW
+   RENDER
    ========================================================= */
 export function renderRegistro(){
-  const p = state.draft.paradaEditando
-    ? state.db.paradas.find(x => x.id === state.draft.paradaEditando)
+  const user = state.db?.currentUser;
+  const modo = state.draft?.modo || 'novo';
+  const paradaEditando = modo === 'encerrar' && state.draft?.paradaEditando
+    ? (state.db.paradas || []).find(p => p.id === state.draft.paradaEditando)
     : null;
 
-  const horaInicio = p ? new Date(p.horaInicio) : new Date();
-  const dataStr = horaInicio.toISOString().slice(0,10);
-  const titulo = p
-    ? (state.draft.modo === 'encerrar' ? 'Encerrar parada #'+p.numero : 'Corrigir registro #'+p.numero)
-    : 'Registrar nova parada';
-  const labelBotao = state.draft.modo === 'encerrar' ? 'Confirmar retorno'
-                    : p ? 'Salvar correção'
-                    : 'Registrar parada';
+  /* Garante draft de anexos */
+  state.draft = state.draft || novoDraft();
+  state.draft.anexos = state.draft.anexos || [];
+
+  /* Máquinas agrupadas por setor */
+  const porSetor = {};
+  (state.db.maquinas || []).forEach(m => {
+    const s = m.setor || 'Sem setor';
+    (porSetor[s] = porSetor[s] || []).push(m);
+  });
+  const maquinasOptions = Object.keys(porSetor).sort().map(setor => {
+    const opts = porSetor[setor]
+      .sort((a,b) => (a.nome || '').localeCompare(b.nome || ''))
+      .map(m => `<option value="${m.id}" ${paradaEditando?.maquinaId === m.id ? 'selected' : ''}>${escapeHtml(m.nome)}</option>`)
+      .join('');
+    return `<optgroup label="${escapeHtml(setor)}">${opts}</optgroup>`;
+  }).join('');
+
+  /* Valores iniciais */
+  const dataHoje      = new Date().toISOString().slice(0, 10);
+  const chapaIni      = paradaEditando?.chapaTecnico || user?.chapa || '';
+  const turnoIni      = paradaEditando?.turno || user?.turno || turnoAtual();
+  const impactoIni    = paradaEditando?.impacto || 'Alto';
+  const categoriaIni  = paradaEditando?.categoria || '';
+  const causaIni      = paradaEditando?.causaRaizCategoria || '';
+  const componenteIni = paradaEditando?.componente || '';
+  const acaoIni       = paradaEditando?.acaoComponente || '';
+  const preventivaIni = paradaEditando?.acaoPreventiva || '';
+  const respIni       = paradaEditando?.responsavel || user?.nome || '';
+  const obsIni        = paradaEditando?.observacao || '';
 
   document.getElementById('view').innerHTML = `
-    <div class="section-head"><h2>${titulo}</h2></div>
+    <div class="registro-wrap">
 
-    <!-- Identificação -->
-    <div class="form-card">
-      <div class="head"><span class="dot"></span><h3>Identificação da ocorrência</h3></div>
-      <div class="body">
-        <div class="field-grid cols-5">
-          <div class="field"><label>Data</label><input type="date" id="fData" value="${dataStr}" ${p?'disabled':''}></div>
-          <div class="field"><label>Turno (SS)</label>
-            <select id="fTurno">${optionsFrom(TURNOS, p?.turno || turnoAtual())}</select>
-          </div>
-          <div class="field"><label>Duração (min)</label><input type="number" id="fDuracao" min="1" placeholder="Ex: 45" value="${p?.duracaoMin || ''}"></div>
-          <div class="field"><label>Impacto</label>
-            <select id="fImpacto">${optionsFrom(IMPACTOS, p?.impacto || state.draft.impacto)}</select>
-          </div>
-        </div>
+      <div class="reg-header">
+        <button type="button" class="reg-voltar" onclick="cancelarRegistro()">←</button>
+        <h2>${modo === 'encerrar'
+              ? 'Encerrar · ' + (paradaEditando?.numero ? '#' + paradaEditando.numero : 'Parada')
+              : 'Registrar parada'}</h2>
+        <div style="width:36px;"></div>
       </div>
-    </div>
 
-    <!-- ============ Local e equipamento (cascata) ============ -->
-    <div class="form-card">
-      <div class="head"><span class="dot"></span><h3>Local e equipamento</h3></div>
-      <div class="body">
-        <div class="cascata">
+      <form id="formRegistro" class="reg-form"
+            onsubmit="event.preventDefault(); salvarRegistro();">
 
-          <div class="field">
-            <label>Setor</label>
-            <select id="fSetorCascata" required>
-              <option value="">Selecione…</option>
-              ${getSetores().map(s =>
-                `<option ${(p?.setor === s) || (!p && state.lastSetor === s) ? 'selected' : ''}>${s}</option>`
-              ).join('')}
-            </select>
+        <!-- ═══════════════ IDENTIFICAÇÃO ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head">
+            <span class="form-card__dot"></span>
+            <h3>Identificação</h3>
           </div>
+          <div class="form-card__body">
 
-          <div class="field hidden" id="wrapArea">
-            <label>Área</label>
-            <select id="fArea"></select>
-          </div>
-
-          <div class="field full">
-            <label>Equipamento</label>
-            <div class="with-btn">
-              <input type="text" id="fEquipamento" list="listaEquipamentos"
-                     placeholder="Digite, selecione ou escaneie o QR…"
-                     autocomplete="off"
-                     value="${escapeHtml(p ? (getMaquina(p.maquinaId)?.nome || '') : '')}">
-              <button type="button" class="icon-btn" onclick="abrirQR()" title="Escanear QR">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
-                  <rect x="8" y="8" width="8" height="8" rx="1"/>
-                </svg>
-              </button>
+            <div class="reg-row cols-3">
+              <div class="reg-field">
+                <label>Data <span class="req">*</span></label>
+                <input type="date" id="regData" value="${dataHoje}" required>
+              </div>
+              <div class="reg-field">
+                <label>Turno <span class="req">*</span></label>
+                <select id="regTurno" required>
+                  ${TURNOS.map(t => `<option ${t === turnoIni ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="reg-field">
+                <label>Impacto <span class="req">*</span></label>
+                <select id="regImpacto" required>
+                  ${IMPACTOS.map(i => `<option ${i === impactoIni ? 'selected' : ''}>${escapeHtml(i)}</option>`).join('')}
+                </select>
+              </div>
             </div>
-            <datalist id="listaEquipamentos"></datalist>
-          </div>
 
-          <div class="field hidden" id="wrapVariante">
-            <label>Linha / Variante</label>
-            <select id="fVariante"></select>
+            <div class="reg-field">
+              <label>Chapa do técnico <span class="req">*</span></label>
+              <input type="text" id="regChapa" value="${escapeHtml(chapaIni)}"
+                     inputmode="numeric" maxlength="9" placeholder="000000000" required>
+            </div>
+
+            <div class="reg-field">
+              <label>Máquina / equipamento <span class="req">*</span></label>
+              <select id="regMaquina" required>
+                <option value="">Selecione…</option>
+                ${maquinasOptions}
+              </select>
+            </div>
+
           </div>
         </div>
 
-        <div class="cascata-preview" id="cascataPreview"></div>
-      </div>
-    </div>
+        <!-- ═══════════════ TIPO DE FALHA ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head form-card__head--sun">
+            <span class="form-card__dot form-card__dot--sun"></span>
+            <h3>Tipo de Falha</h3>
+          </div>
+          <div class="form-card__body">
 
-    <!-- Split: Tipo de falha + Ação -->
-    <div style="display:grid; grid-template-columns:1fr; gap:14px;" id="splitContainer">
+            <div class="reg-field">
+              <label>Tipo de Falha <span class="req">*</span></label>
+              <select id="regTipoFalha" required>
+                <option value="">Selecione…</option>
+                ${TIPOS_FALHA.map(t =>
+                  `<option ${t === categoriaIni ? 'selected' : ''}>${escapeHtml(t)}</option>`
+                ).join('')}
+              </select>
+            </div>
 
-      <!-- Tipo de falha -->
-      <div class="form-card">
-        <div class="head" style="background:var(--sun-dim); border-bottom-color:var(--sun);">
-          <span class="dot" style="background:var(--sun-dark);"></span><h3>Tipo de falha</h3>
+            <div class="reg-field" style="margin-top:14px;">
+              <label>Causa Raiz <span class="req">*</span></label>
+              <select id="regCausaRaizCat" required>
+                <option value="">Selecione…</option>
+                ${CAUSAS_RAIZ.map(c =>
+                  `<option ${c === causaIni ? 'selected' : ''}>${escapeHtml(c)}</option>`
+                ).join('')}
+              </select>
+            </div>
+
+          </div>
         </div>
-        <div class="body">
-          <label style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:6px;">Categoria</label>
-          <div class="cat-grid" id="catGrid">
-            ${Object.keys(SUBCAUSAS).map(c => {
-              const active = (p?.categoria || state.draft.categoria) === c;
-              return `<button type="button" class="cat-btn ${active?'active':''} ${c==='Projeto'?'proj':''}" data-cat="${c}">
-                ${c}<small>${SUBCAUSAS[c].slice(0,2).join(', ')}…</small>
-              </button>`;
-            }).join('')}
-          </div>
 
-          <div id="subcausaWrap" class="hidden">
-            <label style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin:14px 0 6px;">Subcausa específica</label>
-            <div class="chips" id="subcausas"></div>
+        <!-- ═══════════════ COMPONENTE ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head">
+            <span class="form-card__dot"></span>
+            <h3>Componente</h3>
           </div>
-
-          <div class="field" style="margin-top:14px;">
-            <label>Nome do componente</label>
-            <input type="text" id="fComponente" list="listaComponentes" placeholder="Ex: Rolamento 6205" value="${escapeHtml(p?.componente || '')}" autocomplete="off">
-            ${datalist('listaComponentes', COMPONENTES_SUG)}
-          </div>
-
-          <div class="field" style="margin-top:12px;">
-            <label>Causa raiz (detalhe)</label>
-            <div class="with-btn">
-              <textarea id="fCausaRaiz" placeholder="Descreva o motivo principal da falha">${escapeHtml(p?.causaRaiz || '')}</textarea>
-              <button type="button" class="icon-btn" id="btnMic" onclick="toggleDitado()" title="Ditar por voz">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
-              </button>
+          <div class="form-card__body">
+            <div class="reg-field">
+              <label>Nome do componente <span class="req">*</span></label>
+              <input type="text" id="regComponente"
+                     value="${escapeHtml(componenteIni)}"
+                     list="listaComponentes"
+                     placeholder="Ex: Rolamento 6205, Correia A-42…"
+                     autocomplete="off" required>
+              <datalist id="listaComponentes">
+                ${COMPONENTES_SUG.map(c => `<option value="${escapeHtml(c)}">`).join('')}
+              </datalist>
             </div>
           </div>
+        </div>
 
-          <!-- ============= ANEXOS ============= -->
-          <div class="field" style="margin-top:14px;">
-            <label>Anexos da ocorrência</label>
+        <!-- ═══════════════ AÇÃO ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head form-card__head--green">
+            <span class="form-card__dot form-card__dot--green"></span>
+            <h3>Ação</h3>
+          </div>
+          <div class="form-card__body">
+
+            <div class="reg-field">
+              <label>Ação no componente <span class="req">*</span></label>
+              <div class="reg-chips reg-chips--sm" id="regAcaoCompGrid">
+                ${ACOES_COMPONENTE.map(a => `
+                  <button type="button"
+                          class="reg-chip ${a === acaoIni ? 'active' : ''}"
+                          data-val="${escapeHtml(a)}"
+                          onclick="selecionarChipAcao(this)">
+                    ${escapeHtml(a)}
+                  </button>
+                `).join('')}
+              </div>
+              <input type="hidden" id="regAcaoComp" value="${escapeHtml(acaoIni)}" required>
+            </div>
+
+            <div class="reg-field" style="margin-top:14px;">
+              <label>Ação preventiva</label>
+              <div class="reg-chips reg-chips--sm" id="regAcaoPrevGrid">
+                ${ACOES_PREVENTIVAS.map(a => `
+                  <button type="button"
+                          class="reg-chip ${a === preventivaIni ? 'active' : ''}"
+                          data-val="${escapeHtml(a)}"
+                          onclick="selecionarChipPreventiva(this)">
+                    ${escapeHtml(a)}
+                  </button>
+                `).join('')}
+              </div>
+              <input type="hidden" id="regAcaoPreventiva" value="${escapeHtml(preventivaIni)}">
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ═══════════════ ANEXOS ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head">
+            <span class="form-card__dot"></span>
+            <h3>Anexos</h3>
+          </div>
+          <div class="form-card__body">
 
             <div class="anexos-botoes">
-              <button type="button" class="anexo-btn" onclick="document.getElementById('fFotoInput').click()">
+              <button type="button" class="anexo-btn"
+                      onclick="document.getElementById('regFotoInput').click()">
                 <span class="anexo-ic">📷</span>
                 <span class="anexo-lbl">Foto</span>
               </button>
-              <button type="button" class="anexo-btn" id="btnGravarAudio" onclick="toggleAudio()">
-                <span class="anexo-ic" id="audioIc">🎤</span>
-                <span class="anexo-lbl" id="audioLbl">Áudio</span>
+
+              <button type="button" class="anexo-btn" id="regBtnAudio"
+                      onclick="toggleAudioRegistro()">
+                <span class="anexo-ic" id="regAudioIc">🎤</span>
+                <span class="anexo-lbl" id="regAudioLbl">Áudio</span>
               </button>
-              <button type="button" class="anexo-btn" onclick="document.getElementById('fVideoInput').click()">
+
+              <button type="button" class="anexo-btn"
+                      onclick="document.getElementById('regVideoInput').click()">
                 <span class="anexo-ic">🎥</span>
                 <span class="anexo-lbl">Vídeo</span>
               </button>
             </div>
 
-            <input type="file" id="fFotoInput"  accept="image/*" capture="environment" style="display:none" onchange="onFoto(event)">
-            <input type="file" id="fVideoInput" accept="video/*" capture="environment" style="display:none" onchange="onVideo(event)">
+            <input type="file" id="regFotoInput" accept="image/*"
+                   capture="environment" style="display:none"
+                   onchange="onFotoRegistro(event)">
+            <input type="file" id="regVideoInput" accept="video/*"
+                   capture="environment" style="display:none"
+                   onchange="onVideoRegistro(event)">
 
-            <div id="audioStatus" class="audio-status hidden">
+            <div id="regAudioStatus" class="audio-status hidden">
               <span class="audio-rec-dot"></span>
-              <span>Gravando… <b id="audioTimer">0s</b> / 45s</span>
-              <button type="button" class="audio-stop" onclick="toggleAudio()">Parar</button>
+              <span>Gravando… <b id="regAudioTimer">0s</b> / 45s</span>
+              <button type="button" class="audio-stop"
+                      onclick="toggleAudioRegistro()">Parar</button>
             </div>
 
-            <div id="listaAnexos" class="anexos-lista"></div>
-            <div id="pesoAnexos" class="anexos-peso hidden"></div>
-          </div>
-          <!-- ============= /ANEXOS ============= -->
-        </div>
-      </div>
+            <div id="regListaAnexos" class="anexos-lista"></div>
+            <div id="regPesoAnexos" class="anexos-peso hidden"></div>
 
-      <!-- Ação -->
-      <div class="form-card">
-        <div class="head" style="background:var(--green-dim); border-bottom-color:#C8E0D0;">
-          <span class="dot" style="background:var(--green);"></span><h3>Ação realizada</h3>
+          </div>
         </div>
-        <div class="body">
-          <div class="field">
-            <label>Ação no componente</label>
-            <div class="radio-row three" id="acaoCompGrid">
-              <div class="radio-opt ${(p?.acaoComponente || state.draft.acaoComponente)==='Adaptado'?'active':''}" data-val="Adaptado">Adaptado</div>
-              <div class="radio-opt ${(p?.acaoComponente || state.draft.acaoComponente)==='Conserto'?'active':''}" data-val="Conserto">Conserto</div>
-              <div class="radio-opt ${(p?.acaoComponente || state.draft.acaoComponente)==='Substituído (estoque)'?'active':''}" data-val="Substituído (estoque)">Substituído (estoque)</div>
+
+        <!-- ═══════════════ FECHAMENTO ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head">
+            <span class="form-card__dot"></span>
+            <h3>Fechamento</h3>
+          </div>
+          <div class="form-card__body">
+
+            <div class="reg-field">
+              <label>Responsável <span class="req">*</span></label>
+              <input type="text" id="regResponsavel"
+                     value="${escapeHtml(respIni)}"
+                     placeholder="Nome do técnico" required>
             </div>
-          </div>
 
-          <div class="field" style="margin-top:14px;">
-            <label>Ação preventiva</label>
-            <div class="radio-row" id="acaoPrevGrid">
-              <div class="radio-opt ${(p?.acaoPreventiva || state.draft.acaoPreventiva)==='Item de reserva instalado'?'active':''}" data-val="Item de reserva instalado">Item de reserva</div>
-              <div class="radio-opt ${(p?.acaoPreventiva || state.draft.acaoPreventiva)==='Nenhuma'?'active':''}" data-val="Nenhuma">Nenhuma</div>
+            <div class="reg-field" style="margin-top:14px;">
+              <label>Observação (opcional)</label>
+              <div class="reg-obs-wrap">
+                <textarea id="regObs" rows="3"
+                          placeholder="Detalhes do reparo…">${escapeHtml(obsIni)}</textarea>
+                <button type="button" class="reg-mic"
+                        onclick="toggleDitado('regObs')" title="Ditar">🎤</button>
+              </div>
             </div>
-          </div>
 
-          <div class="field" style="margin-top:14px;">
-            <label>Responsável</label>
-            <input type="text" id="fResponsavel" placeholder="Nome do técnico" value="${escapeHtml(p?.responsavel || localStorage.getItem('tecnicoNome') || '')}">
-          </div>
-
-          <div class="field" style="margin-top:12px;">
-            <label>Observação (opcional)</label>
-            <textarea id="fObservacao" placeholder="Anotações extras">${escapeHtml(p?.observacao || '')}</textarea>
           </div>
         </div>
-      </div>
-    </div>
 
-    <div style="display:flex; gap:10px; margin-top:6px; margin-bottom:10px;">
-      <button class="btn block primary" onclick="salvarRegistro()">✅ ${labelBotao}</button>
-      <button class="btn block ghost" onclick="cancelarRegistro()">Cancelar</button>
+        <p id="regErro" class="field-error hidden"></p>
+
+        <div class="reg-actions">
+          <button type="submit" class="reg-btn-primary" id="btnSalvar">
+            ${modo === 'encerrar' ? '✅ ENCERRAR PARADA' : '🚨 REGISTRAR PARADA'}
+          </button>
+        </div>
+
+      </form>
     </div>
   `;
 
-  if(window.innerWidth >= 900){
-    document.getElementById('splitContainer').style.gridTemplateColumns = '1fr 1fr';
-  }
-
-  wireRegistro();
+  /* Renderiza anexos já gravados (se houver) */
   renderAnexosLista();
 }
 
 /* =========================================================
-   WIRING dos campos
+   CHIPS — AÇÃO
    ========================================================= */
-function wireRegistro(){
-  const grid = document.getElementById('catGrid');
-  grid.addEventListener('click', e => {
-    const btn = e.target.closest('.cat-btn'); if(!btn) return;
-    [...grid.children].forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.draft.categoria = btn.dataset.cat;
-    state.draft.subcausa = null;
-    renderSubcausas();
-    document.getElementById('subcausaWrap').classList.remove('hidden');
-  });
-
-  const catInicial = state.draft.paradaEditando
-    ? state.db.paradas.find(x => x.id === state.draft.paradaEditando)?.categoria
-    : state.draft.categoria;
-
-  if(catInicial){
-    state.draft.categoria = catInicial;
-    if(state.draft.paradaEditando){
-      state.draft.subcausa = state.db.paradas.find(x => x.id === state.draft.paradaEditando)?.subcausa;
-    }
-    renderSubcausas();
-    document.getElementById('subcausaWrap').classList.remove('hidden');
-  }
-
-  wireRadio('acaoCompGrid', v => state.draft.acaoComponente = v);
-  wireRadio('acaoPrevGrid', v => state.draft.acaoPreventiva = v);
-
-  document.getElementById('fImpacto').onchange = e => {
-    state.draft.impacto = e.target.value;
-    if(state.draft.impacto === 'Crítico' && navigator.vibrate) navigator.vibrate(80);
-  };
-
-  wireCascata();
+export function selecionarChipAcao(btn){
+  document.querySelectorAll('#regAcaoCompGrid .reg-chip')
+    .forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('regAcaoComp').value = btn.dataset.val;
 }
 
-function renderSubcausas(){
-  const cont = document.getElementById('subcausas');
-  if(!cont) return;
-  cont.innerHTML = '';
-  if(!state.draft.categoria) return;
-  SUBCAUSAS[state.draft.categoria].forEach(s => {
-    const c = document.createElement('div');
-    c.className = 'chip-opt' + (state.draft.subcausa === s ? ' active' : '');
-    c.textContent = s;
-    c.onclick = () => {
-      [...cont.children].forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
-      state.draft.subcausa = s;
-    };
-    cont.appendChild(c);
-  });
-}
-
-function wireRadio(id, setter){
-  const el = document.getElementById(id);
-  el.addEventListener('click', e => {
-    const c = e.target.closest('.radio-opt'); if(!c) return;
-    [...el.children].forEach(x => x.classList.remove('active'));
-    c.classList.add('active');
-    setter(c.dataset.val);
-  });
+export function selecionarChipPreventiva(btn){
+  document.querySelectorAll('#regAcaoPrevGrid .reg-chip')
+    .forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('regAcaoPreventiva').value = btn.dataset.val;
 }
 
 /* =========================================================
-   CASCATA: Setor → Área → Equipamento → Variante
-   ========================================================= */
-function wireCascata(){
-  const setorEl = document.getElementById('fSetorCascata');
-  const areaEl  = document.getElementById('fArea');
-  const eqEl    = document.getElementById('fEquipamento');
-  const varEl   = document.getElementById('fVariante');
-
-  setorEl?.addEventListener('change', () => onSetorChange());
-  areaEl?.addEventListener('change',  () => onAreaChange());
-  eqEl?.addEventListener('input',    () => onEquipamentoChange());
-  eqEl?.addEventListener('change',   () => onEquipamentoChange());
-  varEl?.addEventListener('change',  () => atualizarPreview());
-
-  popularCascataInicial();
-}
-
-function popularCascataInicial(){
-  const setorEl = document.getElementById('fSetorCascata');
-  if(!setorEl) return;
-
-  const setor = setorEl.value;
-  if(!setor) return;
-
-  /* Se veio de edição, restaura a árvore a partir do setor salvo */
-  if(setorTemAreas(setor)){
-    const areaEl = document.getElementById('fArea');
-    const wrapArea = document.getElementById('wrapArea');
-    wrapArea.classList.remove('hidden');
-    areaEl.innerHTML = '<option value="">Selecione…</option>' +
-      getAreas(setor).map(a => `<option>${a}</option>`).join('');
-  }
-
-  atualizarEquipamentosDisponiveis();
-  atualizarPreview();
-}
-
-function onSetorChange(){
-  const setorEl = document.getElementById('fSetorCascata');
-  const setor = setorEl.value;
-  state.draft.setor = setor;
-
-  const wrapArea = document.getElementById('wrapArea');
-  const selArea  = document.getElementById('fArea');
-
-  if(setorTemAreas(setor)){
-    wrapArea.classList.remove('hidden');
-    selArea.innerHTML = '<option value="">Selecione…</option>' +
-      getAreas(setor).map(a => `<option>${a}</option>`).join('');
-    selArea.value = '';
-  } else {
-    wrapArea.classList.add('hidden');
-    selArea.innerHTML = '';
-  }
-
-  document.getElementById('fEquipamento').value = '';
-  document.getElementById('wrapVariante').classList.add('hidden');
-  atualizarEquipamentosDisponiveis();
-  atualizarPreview();
-}
-
-function onAreaChange(){
-  document.getElementById('fEquipamento').value = '';
-  document.getElementById('wrapVariante').classList.add('hidden');
-  atualizarEquipamentosDisponiveis();
-  atualizarPreview();
-}
-
-function atualizarEquipamentosDisponiveis(){
-  const setor = document.getElementById('fSetorCascata').value;
-  const area  = document.getElementById('fArea')?.value || null;
-  const lista = getEquipamentos(setor, area);
-
-  const datalistEl = document.getElementById('listaEquipamentos');
-  datalistEl.innerHTML = lista.map(e => `<option value="${e.replace(/"/g, '&quot;')}">`).join('');
-
-  const inp = document.getElementById('fEquipamento');
-  inp.placeholder = setorEhDinamico(setor)
-    ? 'Digite o nome do equipamento (novo será cadastrado)…'
-    : 'Digite ou selecione…';
-}
-
-function onEquipamentoChange(){
-  const setor = document.getElementById('fSetorCascata').value;
-  const area  = document.getElementById('fArea')?.value || null;
-  const equip = document.getElementById('fEquipamento').value.trim();
-
-  const variantes = getVariantes(setor, area, equip);
-  const wrap = document.getElementById('wrapVariante');
-  const sel  = document.getElementById('fVariante');
-
-  if(variantes.length > 0){
-    wrap.classList.remove('hidden');
-    sel.innerHTML = '<option value="">Selecione…</option>' +
-      variantes.map(v => `<option>${v}</option>`).join('');
-    sel.value = '';
-  } else {
-    wrap.classList.add('hidden');
-    sel.innerHTML = '';
-  }
-
-  atualizarPreview();
-}
-
-function atualizarPreview(){
-  const setor = document.getElementById('fSetorCascata')?.value;
-  const area  = document.getElementById('fArea')?.value;
-  const equip = document.getElementById('fEquipamento')?.value.trim();
-  const variante = document.getElementById('fVariante')?.value;
-  const el = document.getElementById('cascataPreview');
-  if(!el) return;
-
-  const partes = [setor, area, equip, variante].filter(Boolean);
-  el.innerHTML = partes.length ? `📌 <b>${partes.join(' · ')}</b>` : '';
-}
-
-/* =========================================================
-   Cancelar
+   CANCELAR
    ========================================================= */
 export function cancelarRegistro(){
   state.draft = novoDraft();
@@ -435,84 +338,98 @@ export function cancelarRegistro(){
 }
 
 /* =========================================================
-   Anexos
+   ANEXOS — FOTO
    ========================================================= */
-export async function onFoto(e){
-  const file = e.target.files?.[0]; if(!file) return;
+export async function onFotoRegistro(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+
   try {
     const anexo = await processarFoto(file);
     state.draft.anexos = [...(state.draft.anexos || []), anexo];
-    e.target.value = '';
+    event.target.value = '';
     renderAnexosLista();
-    toast('Foto anexada', 'green');
+    toast('Foto anexada', 'success');
   } catch(err){
-    toast('Erro ao processar foto', 'red');
+    console.error('[registro] erro foto:', err);
+    toast('Erro ao processar foto', 'error');
   }
 }
 
-export async function onVideo(e){
-  const file = e.target.files?.[0]; if(!file) return;
+/* =========================================================
+   ANEXOS — VÍDEO
+   ========================================================= */
+export async function onVideoRegistro(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+
   try {
     const anexo = await processarVideo(file);
     state.draft.anexos = [...(state.draft.anexos || []), anexo];
-    e.target.value = '';
+    event.target.value = '';
     renderAnexosLista();
-    toast('Vídeo anexado', 'green');
+    toast('Vídeo anexado', 'success');
   } catch(err){
-    toast(err.message || 'Erro no vídeo', 'red');
+    console.error('[registro] erro vídeo:', err);
+    toast(err.message || 'Erro no vídeo', 'error');
   }
 }
 
-export async function toggleAudio(){
+/* =========================================================
+   ANEXOS — ÁUDIO
+   ========================================================= */
+export async function toggleAudioRegistro(){
   if(estaGravando()){ pararGravacao(); return; }
 
+  const status = document.getElementById('regAudioStatus');
+  const ic     = document.getElementById('regAudioIc');
+  const lbl    = document.getElementById('regAudioLbl');
+
   try {
-    document.getElementById('audioStatus').classList.remove('hidden');
-    document.getElementById('audioIc').textContent = '⏹';
-    document.getElementById('audioLbl').textContent = 'Parar';
+    status.classList.remove('hidden');
+    ic.textContent  = '⏹';
+    lbl.textContent = 'Parar';
 
     await iniciarGravacao({
-      onTick: s => {
-        const el = document.getElementById('audioTimer');
+      onTick: (s) => {
+        const el = document.getElementById('regAudioTimer');
         if(el) el.textContent = s + 's';
       },
       onEnd: (anexo, dur) => {
-        const st = document.getElementById('audioStatus');
-        const ic = document.getElementById('audioIc');
-        const lb = document.getElementById('audioLbl');
-        if(st) st.classList.add('hidden');
-        if(ic) ic.textContent = '🎤';
-        if(lb) lb.textContent = 'Áudio';
+        status.classList.add('hidden');
+        ic.textContent  = '🎤';
+        lbl.textContent = 'Áudio';
 
         if(anexo){
           state.draft.anexos = [...(state.draft.anexos || []), anexo];
           renderAnexosLista();
-          toast(`Áudio gravado (${dur}s)`, 'green');
+          toast(`Áudio gravado (${dur}s)`, 'success');
         }
       }
     });
   } catch(err){
-    const st = document.getElementById('audioStatus');
-    const ic = document.getElementById('audioIc');
-    const lb = document.getElementById('audioLbl');
-    if(st) st.classList.add('hidden');
-    if(ic) ic.textContent = '🎤';
-    if(lb) lb.textContent = 'Áudio';
-    toast(err.message || 'Não foi possível gravar', 'red');
+    status.classList.add('hidden');
+    ic.textContent  = '🎤';
+    lbl.textContent = 'Áudio';
+    toast(err.message || 'Não foi possível gravar', 'error');
   }
 }
 
-export function removerAnexoItem(ts){
+/* =========================================================
+   ANEXOS — LISTA
+   ========================================================= */
+export function removerAnexoRegistro(ts){
   state.draft.anexos = removerAnexo(state.draft.anexos, ts);
   renderAnexosLista();
 }
 
 function renderAnexosLista(){
-  const cont = document.getElementById('listaAnexos');
-  const peso = document.getElementById('pesoAnexos');
+  const cont = document.getElementById('regListaAnexos');
+  const peso = document.getElementById('regPesoAnexos');
   if(!cont) return;
 
   const anexos = state.draft.anexos || [];
+
   if(anexos.length === 0){
     cont.innerHTML = '';
     peso?.classList.add('hidden');
@@ -528,19 +445,22 @@ function renderAnexosLista(){
             <span class="anexo-tag">📷 Foto</span>
             <span class="anexo-size">${formatarPeso(a.tamanho)}</span>
           </div>
-          <button type="button" class="anexo-x" onclick="removerAnexoItem(${a.ts})">✕</button>
+          <button type="button" class="anexo-x"
+                  onclick="removerAnexoRegistro(${a.ts})">✕</button>
         </div>
       `;
     }
     if(a.tipo === 'video'){
       return `
         <div class="anexo-item">
-          <video src="${base64ParaUrl(a.data, a.mime)}" class="anexo-thumb" muted></video>
+          <video src="${base64ParaUrl(a.data, a.mime)}"
+                 class="anexo-thumb" muted></video>
           <div class="anexo-info">
             <span class="anexo-tag">🎥 Vídeo</span>
             <span class="anexo-size">${formatarPeso(a.tamanho)}</span>
           </div>
-          <button type="button" class="anexo-x" onclick="removerAnexoItem(${a.ts})">✕</button>
+          <button type="button" class="anexo-x"
+                  onclick="removerAnexoRegistro(${a.ts})">✕</button>
         </div>
       `;
     }
@@ -550,9 +470,11 @@ function renderAnexosLista(){
           <div class="anexo-audio-ic">🎤</div>
           <div class="anexo-info">
             <span class="anexo-tag">Áudio · ${a.duracao || 0}s</span>
-            <audio controls src="${base64ParaUrl(a.data, a.mime)}" style="height:28px; margin-top:3px; width:100%;"></audio>
+            <audio controls src="${base64ParaUrl(a.data, a.mime)}"
+                   style="height:28px;margin-top:3px;width:100%;"></audio>
           </div>
-          <button type="button" class="anexo-x" onclick="removerAnexoItem(${a.ts})">✕</button>
+          <button type="button" class="anexo-x"
+                  onclick="removerAnexoRegistro(${a.ts})">✕</button>
         </div>
       `;
     }
@@ -562,84 +484,99 @@ function renderAnexosLista(){
   if(peso){
     const total = pesoAnexos(anexos);
     peso.textContent = `Total: ${formatarPeso(total)} em ${anexos.length} anexo(s)`;
-    peso.classList.toggle('hidden', anexos.length === 0);
+    peso.classList.remove('hidden');
   }
 }
 
 /* =========================================================
-   Salvar
+   SALVAR
    ========================================================= */
-export function salvarRegistro(){
-  /* ---- Lê da cascata ---- */
-  const setor       = document.getElementById('fSetorCascata').value;
-  const area        = document.getElementById('fArea')?.value || '';
-  const equipamento = document.getElementById('fEquipamento').value.trim();
-  const variante    = document.getElementById('fVariante')?.value || '';
-  const maquinaNome = comporNomeEquipamento(equipamento, variante);
+export async function salvarRegistro(){
+  const btn  = document.getElementById('btnSalvar');
+  const modo = state.draft?.modo || 'novo';
+  const erro = document.getElementById('regErro');
+  erro.classList.add('hidden');
 
-  const dados = {
-    maquinaNome,
-    setor,
-    area,                  /* guardado para histórico/futuro */
-    equipamentoBase: equipamento,
-    variante,
+  /* Coleta */
+  const data        = document.getElementById('regData').value;
+  const chapa       = document.getElementById('regChapa').value.replace(/\D/g, '');
+  const maquinaId   = document.getElementById('regMaquina').value;
+  const turno       = document.getElementById('regTurno').value;
+  const impacto     = document.getElementById('regImpacto').value;
+  const categoria   = document.getElementById('regTipoFalha').value;
+  const causaRaiz   = document.getElementById('regCausaRaizCat').value;
+  const componente  = document.getElementById('regComponente').value.trim();
+  const acaoComp    = document.getElementById('regAcaoComp').value;
+  const acaoPrev    = document.getElementById('regAcaoPreventiva').value;
+  const responsavel = document.getElementById('regResponsavel').value.trim();
+  const obs         = document.getElementById('regObs').value.trim();
+  const anexos      = state.draft.anexos || [];
 
-    turno:       document.getElementById('fTurno').value,
-    duracao:     document.getElementById('fDuracao').value,
-    impacto:     document.getElementById('fImpacto').value,
-    componente:  document.getElementById('fComponente').value.trim(),
-    causaRaiz:   document.getElementById('fCausaRaiz').value.trim(),
-    responsavel: document.getElementById('fResponsavel').value.trim(),
-    observacao:  document.getElementById('fObservacao').value.trim(),
+  /* Validações */
+  if(chapa.length !== 9)   return mostrarErro(erro, 'Chapa deve ter 9 dígitos.');
+  if(!maquinaId)           return mostrarErro(erro, 'Selecione a máquina.');
+  if(!categoria)           return mostrarErro(erro, 'Escolha o Tipo de Falha.');
+  if(!causaRaiz)           return mostrarErro(erro, 'Escolha a Causa Raiz.');
+  if(!componente)          return mostrarErro(erro, 'Informe o componente.');
+  if(!acaoComp)            return mostrarErro(erro, 'Escolha a ação no componente.');
+  if(!responsavel)         return mostrarErro(erro, 'Informe o responsável.');
 
-    categoria:      state.draft.categoria,
-    subcausa:       state.draft.subcausa,
-    acaoComponente: state.draft.acaoComponente,
-    acaoPreventiva: state.draft.acaoPreventiva,
-    foto:           state.draft.foto,
-    anexos:         state.draft.anexos || []
-  };
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
 
-  /* ---- Validações ---- */
-  if(!setor){ toast('Selecione o setor.', 'red'); return; }
-  if(!equipamento){ toast('Informe o equipamento.', 'red'); return; }
-  if(!dados.categoria){ toast('Selecione o tipo de falha.', 'red'); return; }
-  if(!dados.acaoComponente){ toast('Selecione a ação no componente.', 'red'); return; }
-  if(!dados.responsavel){ toast('Informe o responsável.', 'red'); return; }
+  try {
+    if(modo === 'encerrar' && state.draft.paradaEditando){
+      await atualizarParada(state.draft.paradaEditando, {
+        data, chapa, turno, impacto, categoria,
+        causaRaiz, componente,
+        acaoComponente: acaoComp, acaoPreventiva: acaoPrev,
+        responsavel, observacao: obs,
+        anexos
+      }, { encerrar: true });
 
-  state.lastSetor = setor;
-  localStorage.setItem('ultimoSetor', setor);
-  localStorage.setItem('tecnicoNome', dados.responsavel);
+      toast('Parada encerrada', 'success');
+    } else {
+      const parada = await criarParada({
+        data, chapa, maquinaId, turno, impacto,
+        categoria, causaRaiz, componente,
+        acaoComponente: acaoComp, acaoPreventiva: acaoPrev,
+        responsavel, observacao: obs,
+        anexos
+      });
 
-  /* ---- APRENDIZADO: Industrializador memoriza o equipamento ---- */
-  if(setorEhDinamico(setor)){
-    registrarEquipamentoAprendido(setor, equipamento);
-  }
-
-  if(state.draft.paradaEditando){
-    const p = atualizarParada(state.draft.paradaEditando, dados, {
-      encerrar: state.draft.modo === 'encerrar'
-    });
-    if(p){
-      toast(state.draft.modo === 'encerrar'
-        ? `Parada #${p.numero} encerrada`
-        : `Registro #${p.numero} atualizado`, 'green');
+      toast(`Parada #${parada.numero} registrada`, 'success');
     }
-  } else {
-    const { parada } = criarParada(dados);
-    if(parada.impacto === 'Crítico') alertaCritico();
-    toast(`Parada #${parada.numero} registrada · ${maquinaNome}`,
-          parada.impacto === 'Crítico' ? 'red' : 'green');
 
-    const idNovo = parada.id;
-    registrarDesfazer(`Parada #${parada.numero} registrada`, () => {
-      state.db.paradas = state.db.paradas.filter(x => x.id !== idNovo);
-      state.db.os      = state.db.os.filter(o => o.paradaId !== idNovo);
-      const m = getMaquina(parada.maquinaId); if(m) m.status = 'ok';
-    });
+    state.draft = novoDraft();
+    navigate('radar');
+
+  } catch(err){
+    mostrarErro(erro, err.message || 'Erro ao salvar.');
+    btn.disabled = false;
+    btn.textContent = modo === 'encerrar'
+      ? '✅ ENCERRAR PARADA'
+      : '🚨 REGISTRAR PARADA';
   }
-
-  salvarDB();
-  state.draft = novoDraft();
-  navigate('radar');
 }
+
+function mostrarErro(el, msg){
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+/* =========================================================
+   EXPOSIÇÃO GLOBAL — para os onclick/onchange inline do HTML
+   ⚡ ESSENCIAL: sem isto, os handlers inline não funcionam
+   ========================================================= */
+Object.assign(window, {
+  renderRegistro,
+  salvarRegistro,
+  cancelarRegistro,
+  selecionarChipAcao,
+  selecionarChipPreventiva,
+  onFotoRegistro,
+  onVideoRegistro,
+  toggleAudioRegistro,
+  removerAnexoRegistro,
+  toggleDitado
+});

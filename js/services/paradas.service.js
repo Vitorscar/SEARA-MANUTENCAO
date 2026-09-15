@@ -1,95 +1,82 @@
-import { state, salvarDB, getMaquina } from '../core/state.js';
-import { acharOuCriarMaquina } from './maquinas.service.js';
-import { criarOS } from './os.service.js';
-import { emit } from '../core/events.js';
+/* =========================================================
+   paradas.service.js
+   ========================================================= */
 
-export function criarParada(dados){
-  const maq = acharOuCriarMaquina(dados.maquinaNome, dados.setor);
+import { state, salvarDB } from '../core/state.js';
+import { api }             from '../data/api.js';
 
-  const parada = {
-    id:'p'+Date.now(),
-    numero: state.db.seqParada++,
-    maquinaId: maq.id,
-    setor: dados.setor,
-    turno: dados.turno,
-    horaInicio: Date.now(),
-    horaFim: null,
-    duracaoMin: dados.duracao ? parseInt(dados.duracao, 10) : null,
-    impacto: dados.impacto,
-    status:'aguardando',
-    tecnicoId:null,
-    categoria: dados.categoria,
-    subcausa: dados.subcausa || '—',
-    componente: dados.componente,
-    causaRaiz: dados.causaRaiz,
-    acaoComponente: dados.acaoComponente,
-    acaoPreventiva: dados.acaoPreventiva || '—',
-    responsavel: dados.responsavel,
-    observacao: dados.observacao,
-    foto: dados.foto,
-    anexos: dados.anexos || [],
-};
+/* =========================================================
+   CRIAR PARADA
+   ========================================================= */
+export async function criarParada(payload){
+  /* 1) Mapeia os campos do form → colunas da tabela */
+  const dados = {
+    maquinaId:      payload.maquinaId,
+    setor:          payload.setor || null,
+    area:           payload.area || null,
+    turno:          payload.turno,
+    impacto:        payload.impacto || 'Alto',
+    status:         'aguardando',
 
+    tecnicoId:      state.db?.currentUser?.id || null,
+    responsavel:    payload.responsavel,
+    chapaTecnico:   payload.chapa,
 
+    categoria:      payload.categoria,
+    causaRaiz:      payload.causaRaiz,
+    componente:     payload.componente,
+
+    acaoComponente: payload.acaoComponente,
+    acaoPreventiva: payload.acaoPreventiva,
+
+    observacao:     payload.observacao,
+    data:           payload.data
+  };
+
+  /* 2) Vai pro Supabase */
+  const parada = await api.paradas.criar(dados);
+
+  /* 3) Atualiza o cache local (pra UI refletir na hora) */
+  state.db.paradas = state.db.paradas || [];
   state.db.paradas.unshift(parada);
-  maq.status = 'parada';
-  criarOS(parada, maq.id, parada.causaRaiz || parada.categoria);
+
+  /* 4) Marca a máquina como parada */
+  const maq = (state.db.maquinas || []).find(m => m.id === dados.maquinaId);
+  if(maq) maq.status = 'parada';
 
   salvarDB();
-  emit('parada:criada', parada);
-  return { parada, maquina: maq };
+
+  return parada;
 }
 
-export function atualizarParada(id, dados, opts = {}){
-  const p = state.db.paradas.find(x => x.id === id);
-  if(!p) return null;
+/* =========================================================
+   ENCERRAR PARADA
+   ========================================================= */
+export async function atualizarParada(id, payload, opts = {}){
+  const patch = {
+    categoria:      payload.categoria,
+    causaRaiz:      payload.causaRaiz,
+    componente:     payload.componente,
+    acaoComponente: payload.acaoComponente,
+    acaoPreventiva: payload.acaoPreventiva,
+    observacao:     payload.observacao
+  };
 
-  p.setor          = dados.setor;
-  p.turno          = dados.turno;
-  p.duracaoMin     = dados.duracao ? parseInt(dados.duracao, 10) : p.duracaoMin;
-  p.impacto        = dados.impacto;
-  p.categoria      = dados.categoria;
-  p.subcausa       = dados.subcausa || '—';
-  p.componente     = dados.componente;
-  p.causaRaiz      = dados.causaRaiz;
-  p.acaoComponente = dados.acaoComponente;
-  p.acaoPreventiva = dados.acaoPreventiva || '—';
-  p.responsavel    = dados.responsavel;
-  p.observacao     = dados.observacao;
-  p.foto           = dados.foto;
+  /* Encerrar → mexe no status e hora fim */
+  const parada = await api.paradas.encerrar(id, patch);
 
-  if(opts.encerrar && p.status !== 'encerrada'){
-    p.status     = 'encerrada';
-    p.horaFim    = Date.now();
-    p.duracaoMin = Math.round((p.horaFim - p.horaInicio) / 60000);
-    const m = getMaquina(p.maquinaId); if(m) m.status = 'ok';
-    const os = state.db.os.find(o => o.paradaId === p.id); if(os) os.coluna = 'concluido';
+  /* Atualiza cache local */
+  const local = (state.db.paradas || []).find(p => p.id === id);
+  if(local){
+    Object.assign(local, parada);
+  }
+
+  /* Máquina volta a operar */
+  if(opts.encerrar && parada.maquinaId){
+    const maq = (state.db.maquinas || []).find(m => m.id === parada.maquinaId);
+    if(maq) maq.status = 'operando';
   }
 
   salvarDB();
-  emit('parada:atualizada', p);
-  return p;
-}
-
-export function assumirParada(id, tecnicoId){
-  const p = state.db.paradas.find(x => x.id === id);
-  if(!p) return null;
-
-  const antes = { status: p.status, tecnicoId: p.tecnicoId };
-  p.status     = 'atendendo';
-  p.tecnicoId  = tecnicoId;
-
-  const os = state.db.os.find(o => o.paradaId === p.id);
-  if(os){ os.coluna = 'andamento'; os.tecnicoId = tecnicoId; }
-
-  salvarDB();
-  emit('parada:assumida', p);
-  return { parada: p, os, antes };
-}
-
-export function removerParada(id){
-  state.db.paradas = state.db.paradas.filter(p => p.id !== id);
-  state.db.os      = state.db.os.filter(o => o.paradaId !== id);
-  salvarDB();
-  emit('parada:removida', id);
+  return parada;
 }

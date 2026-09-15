@@ -1,13 +1,420 @@
 /* ==========================================================================
-   registro.css — grid responsivo do formulário de registro/edição
-   A base do formulário vive em components/form.css.
-   Aqui ficam apenas os grids que SÓ existem nesta view.
+   registro.css — formulário completo (padrão planilha otimizado para mobile)
+   Tokens utilizados: --white, --bg, --bg-2, --ink, --ink-soft, --ink-muted,
+                      --line, --line-2, --red, --red-dim, --warning,
+                      --green, --sun, --mono
    ========================================================================== */
 
-@media (min-width:640px){
-  /* Cabeçalho da ocorrência: Data | Setor | Turno | Duração | Impacto */
-  .field-grid.cols-5{grid-template-columns:repeat(5,1fr);}
+/* ---------- Wrapper & Reset Local ---------- */
+.registro-wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0));
+}
 
-  /* Outros blocos com 3 colunas lado a lado */
-  .field-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+/* ---------- Header ---------- */
+.reg-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 20px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.reg-voltar {
+  /* Alvo de toque mínimo de 44px para uso com luvas/dedos grandes */
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--white);
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  touch-action: manipulation; /* Remove delay de double-tap no mobile */
+}
+
+.reg-voltar:active {
+  transform: scale(0.92);
+  background: var(--bg-2);
+  border-color: var(--ink-soft);
+}
+
+.reg-header h2 {
+  font-size: 18px;
+  font-weight: 900;
+  margin: 0;
+  text-align: center;
+  flex: 1;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+/* ==========================================================================
+   FORM-CARD — Seções do formulário
+   ========================================================================== */
+.form-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.form-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Variantes de cor para os cabeçalhos dos cards */
+.form-card__head--sun   { background: rgba(253, 185, 19, 0.15); border-bottom-color: var(--sun); }
+.form-card__head--green { background: rgba(30, 122, 61, 0.10); border-bottom-color: var(--green); }
+.form-card__head--red   { background: var(--red-dim); border-bottom-color: var(--red); }
+
+.form-card__head h3 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.form-card__dot {
+  width: 10px; 
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.05);
+}
+.form-card__dot--sun   { background: var(--sun); box-shadow: 0 0 0 3px rgba(253, 185, 19, 0.2); }
+.form-card__dot--green { background: var(--green); box-shadow: 0 0 0 3px rgba(30, 122, 61, 0.2); }
+.form-card__dot--red   { background: var(--red); box-shadow: 0 0 0 3px var(--red-dim); }
+
+.form-card__body { 
+  padding: 16px; 
+}
+
+/* ==========================================================================
+   LAYOUT DE CAMPOS
+   ========================================================================== */
+.reg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* Espaçamento consistente entre os cards */
+}
+
+.reg-row {
+  display: grid;
+  gap: 12px;
+}
+
+.reg-row.cols-3 { 
+  grid-template-columns: repeat(3, 1fr); 
+}
+
+/* Responsividade inteligente para grids */
+@media (max-width: 640px) {
+  .reg-row.cols-3 { grid-template-columns: 1fr 1fr; }
+  .reg-row.cols-3 .reg-field:first-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 420px) {
+  .reg-row.cols-3 { grid-template-columns: 1fr; }
+  .reg-row.cols-3 .reg-field:first-child { grid-column: auto; }
+}
+
+/* ---------- Campo individual ---------- */
+.reg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reg-field label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reg-field .req { 
+  color: var(--red); 
+  font-size: 14px;
+}
+
+.reg-field input,
+.reg-field select,
+.reg-field textarea {
+  width: 100%;
+  background: var(--white);
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 16px; /* 16px previne zoom automático no iOS ao focar */
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+  appearance: none; /* Remove estilos nativos feios do browser */
+}
+
+.reg-field select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
+}
+
+.reg-field input:focus,
+.reg-field select:focus,
+.reg-field textarea:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px var(--red-dim);
+}
+
+.reg-field textarea {
+  min-height: 90px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* Input da chapa em destaque (foco total na legibilidade) */
+.reg-field input#regChapa {
+  font-family: var(--mono);
+  font-size: 20px;
+  letter-spacing: 0.15em;
+  text-align: center;
+  font-weight: 800;
+  padding: 16px;
+}
+
+.reg-hint {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   CHIPS (Tipo de falha, causa raiz, ação)
+   ========================================================================== */
+.reg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.reg-chip {
+  flex: 1 1 auto;
+  min-width: calc(50% - 5px);
+  padding: 14px 12px;
+  background: var(--white);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.reg-chip:hover { 
+  border-color: var(--ink-soft); 
+  background: var(--bg-2);
+}
+
+.reg-chip:active {
+  transform: scale(0.96);
+}
+
+.reg-chip.active {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--white);
+  box-shadow: 0 4px 12px rgba(200, 16, 46, 0.25);
+}
+
+/* Variante pequena — 3 por linha (causa raiz, ação) */
+.reg-chips--sm .reg-chip {
+  min-width: calc(33.333% - 7px);
+  font-size: 12.5px;
+  padding: 12px 8px;
+}
+
+@media (max-width: 520px) {
+  .reg-chips--sm .reg-chip { 
+    min-width: calc(50% - 5px); 
+  }
+}
+
+/* Categoria (5 opções) — 2 por linha no mobile, 3 no desktop */
+#regChipsFalha .reg-chip {
+  min-width: calc(50% - 5px);
+}
+@media (min-width: 640px) {
+  #regChipsFalha .reg-chip { 
+    min-width: calc(33.333% - 7px); 
+  }
+}
+
+/* ==========================================================================
+   OBSERVAÇÃO + MICROFONE
+   ========================================================================== */
+.reg-obs-wrap {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.reg-obs-wrap textarea { 
+  flex: 1; 
+  min-width: 0; 
+}
+
+.reg-mic {
+  width: 52px;
+  background: var(--bg-2);
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+  border-radius: 12px;
+  font-size: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.reg-mic:hover { 
+  border-color: var(--ink-soft); 
+  background: var(--white);
+}
+
+.reg-mic:active {
+  transform: scale(0.92);
+}
+
+.reg-mic.rec {
+  background: var(--red);
+  color: var(--white);
+  border-color: var(--red);
+  animation: pulseMic 1.2s infinite ease-in-out;
+}
+
+@keyframes pulseMic { 
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 16, 46, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(200, 16, 46, 0); } 
+}
+
+/* ==========================================================================
+   BOTÃO PRINCIPAL
+   ========================================================================== */
+.reg-actions {
+  margin-top: 24px;
+  padding: 0 4px;
+  position: sticky;
+  bottom: 16px;
+  z-index: 10;
+}
+
+.reg-btn-primary {
+  width: 100%;
+  padding: 18px 20px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #E11D2E, #8C0C21);
+  color: var(--white);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(200, 16, 46, 0.3);
+  transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.reg-btn-primary:hover { 
+  filter: brightness(1.08); 
+  box-shadow: 0 8px 24px rgba(200, 16, 46, 0.4);
+}
+
+.reg-btn-primary:active { 
+  transform: scale(0.98); 
+}
+
+.reg-btn-primary:disabled { 
+  opacity: 0.6; 
+  cursor: not-allowed; 
+  filter: grayscale(0.5);
+}
+
+/* ==========================================================================
+   ERRO GERAL DO FORMULÁRIO
+   ========================================================================== */
+.field-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--red);
+  background: var(--red-dim);
+  border-left: 4px solid var(--red);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  animation: shake 0.4s ease-in-out;
+}
+
+.field-error.hidden { 
+  display: none; 
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* ==========================================================================
+   ACESSIBILIDADE & PREFERÊNCIAS
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

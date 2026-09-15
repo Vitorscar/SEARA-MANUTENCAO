@@ -52,8 +52,7 @@ export function novoDraft() {
    INIT — com validação de sessão
    ========================================================= */
 export async function initState(){
-  const dados = await api.load();   // ← ESPERA os dados chegarem
-
+  const dados = await api.load();
   state.db = dados;
 
   /* Garantir estrutura mínima */
@@ -65,31 +64,61 @@ export async function initState(){
   state.db.equipamentosDescobertos = state.db.equipamentosDescobertos || {};
   state.db.seqParada     = state.db.seqParada || 1;
 
-  /* ---------- Validação de sessão ---------- */
+  /* ══════════════════════════════════════════════════
+     RESTAURAR SESSÃO DO localStorage
+     ══════════════════════════════════════════════════ */
   const SESSION_KEY = 'seara_sessao_v1';
-  let sessaoValida = false;
+  let sessao = null;
 
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if(raw){
       const s = JSON.parse(raw);
-      sessaoValida = !!(s?.expiraEm && s.expiraEm > Date.now());
+      /* Só restaura se ainda não expirou */
+      if(s?.expiraEm && s.expiraEm > Date.now()){
+        sessao = s;
+      } else {
+        localStorage.removeItem(SESSION_KEY);
+      }
     }
-  } catch(e){ sessaoValida = false; }
-
-  if(!sessaoValida){
-    state.db.currentUser = null;
-    state.db.sessao = null;
-    try { localStorage.removeItem(SESSION_KEY); } catch(e){}
+  } catch(e){
+    sessao = null;
   }
 
+  /* Se há sessão válida E o cache tem o currentUser, restaura */
+  if(sessao && state.db.currentUser){
+    /* já está lá */
+  } else if(sessao){
+    /* Reconstrói o currentUser a partir da lista de técnicos */
+    const user = (state.db.tecnicos || []).find(t => t.id === sessao.userId);
+    if(user){
+      state.db.currentUser = {
+        id:            user.id,
+        nome:          user.nome,
+        chapa:         user.chapa,
+        turno:         user.turno,
+        especialidade: user.especialidade,
+        role:          user.role,
+        loginEm:       new Date(sessao.iniciadaEm || Date.now()).toISOString()
+      };
+    } else {
+      /* Sessão órfã (usuário não existe mais) → limpa */
+      localStorage.removeItem(SESSION_KEY);
+      state.db.currentUser = null;
+    }
+  } else {
+    state.db.currentUser = null;
+  }
+
+  state.db.sessao = sessao;
   state.lastSetor = localStorage.getItem('ultimoSetor') || '';
   window.__state = state;
 
   console.log('[initState] pronto:', {
+    logado: !!state.db.currentUser,
+    user: state.db.currentUser?.nome || null,
     maquinas: state.db.maquinas.length,
-    tecnicos: state.db.tecnicos.length,
-    logado: !!state.db.currentUser
+    tecnicos: state.db.tecnicos.length
   });
 }
 

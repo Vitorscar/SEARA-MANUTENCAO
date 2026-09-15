@@ -1,39 +1,135 @@
 /* =========================================================
-   api.js — Supabase real + fallback garantido (Offline-First)
+   api.js — adapter Supabase + fallback offline
+   Estrutura:
+     api.load()           → carrega tudo
+     api.save(db)         → salva no cache
+     api.auth.*           → RPCs de login
+     api.usuarios.*       → CRUD de funcionários
+     api.maquinas.*       → CRUD de máquinas
+     api.paradas.*        → CRUD de paradas
    ========================================================= */
 
 import { supabase } from './supabase-client.js';
-import { seed } from './seed.js';
+import { seed }     from './seed.js';
 
 const CACHE_KEY = 'seara_cache_v2';
 
-/* ---------- Cache Local ---------- */
-function cacheGet() {
+/* =========================================================
+   CACHE LOCAL
+   ========================================================= */
+function cacheGet(){
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch (e) { 
-    return null; 
+  } catch(e){ return null; }
+}
+function cacheSet(db){
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(db));
+  } catch(e){
+    console.warn('[api] cache cheio:', e.message);
   }
 }
 
-function cacheSet(db) {
-  try { 
-    localStorage.setItem(CACHE_KEY, JSON.stringify(db)); 
-  } catch (e) {
-    console.warn('[api] Falha ao salvar no cache local:', e);
-  }
+/* =========================================================
+   HELPERS — utilitários de data
+   ========================================================= */
+function paraISO(ts){
+  if(!ts) return null;
+  const d = ts instanceof Date ? ts : new Date(ts);
+  if(isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function paraMs(iso){
+  if(!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+/* =========================================================
+   HELPERS — mapeamento linha → objeto
+   ========================================================= */
+function mapUsuario(u){
+  if(!u) return null;
+  return {
+    id:            u.id,
+    nome:          u.nome,
+    chapa:         u.chapa,
+    matricula:     u.chapa,
+    turno:         u.turno,
+    especialidade: u.especialidade,
+    role:          u.role,
+    ativo:         u.ativo
+  };
+}
+
+function mapMaquina(m){
+  if(!m) return null;
+  return {
+    id:         m.id,
+    nome:       m.nome,
+    setor:      m.setor || '',
+    area:       m.area  || '',
+    prioridade: m.prioridade,
+    status:     m.status,
+    qr:         m.qr_code || '',
+    ativo:      m.ativo
+  };
+}
+
+function mapParada(p, anexos = []){
+  if(!p) return null;
+  return {
+    id:                  p.id,
+    numero:              p.numero,
+
+    /* Máquina / local */
+    maquinaId:           p.maquina_id,
+    maquinaNome:         p.maquina || null,
+    setor:               p.setor || '',
+    area:                p.area || '',
+
+    /* Identificação */
+    data:                p.data_ocorrencia || null,         // 🆕
+    turno:               p.turno,
+    impacto:             p.impacto,
+    status:              p.status,
+
+    /* Tempos */
+    horaInicio:          paraMs(p.hora_inicio) || Date.now(),
+    horaAssumida:        paraMs(p.hora_assumida),
+    horaFim:             paraMs(p.hora_fim),
+    duracaoMin:          p.duracao_min,
+
+    /* Técnico */
+    tecnicoId:           p.tecnico_id,
+    responsavel:         p.responsavel || '',
+    chapaTecnico:        p.chapa_tecnico || '',
+
+    /* Falha */
+    categoria:           p.categoria || '',
+    causaRaizCategoria:  p.causa_raiz_categoria || '',       // 🆕
+    componente:          p.componente || '',
+    causaRaiz:           p.causa_raiz || '',                 // texto livre (detalhe)
+
+    /* Ação */
+    acaoComponente:      p.acao_componente || '',
+    acaoPreventiva:      p.acao_preventiva || '',
+
+    /* Extras */
+    observacao:          p.observacao || '',
+    anexos:              anexos.filter(a => a.parada_id === p.id)
+  };
 }
 
 /* =========================================================
    LOAD
    ========================================================= */
-async function load() {
+async function load(){
   const cached = cacheGet();
-  const online = navigator.onLine;
 
-  /* ---------- Tenta Supabase ---------- */
-  if (online) {
+  if(navigator.onLine){
     try {
       console.log('[api] consultando Supabase…');
 
@@ -45,180 +141,278 @@ async function load() {
         supabase.from('anexos').select('*')
       ]);
 
-      if (u.error) console.warn('[api] usuarios:', u.error.message);
-      if (m.error) console.warn('[api] maquinas:', m.error.message);
-      if (p.error) console.warn('[api] paradas:', p.error.message);
+      if(u.error) console.warn('[api] usuarios:', u.error.message);
+      if(m.error) console.warn('[api] maquinas:', m.error.message);
+      if(p.error) console.warn('[api] paradas:', p.error.message);
 
-      /* Se a tabela principal (máquinas) falhar, cai para o cache */
-      if (m.error) throw new Error('maquinas: ' + m.error.message);
+      /* Bloqueia só se máquinas falhar (tabela principal) */
+      if(m.error) throw new Error('maquinas: ' + m.error.message);
 
-      // Cálculo seguro do próximo número de parada (evita colisão de IDs)
-      const maxSeq = (p.data || []).reduce((max, x) => Math.max(max, x.numero || 0), 0);
+      const maxSeq = (p.data || []).reduce(
+        (max, x) => Math.max(max, x.numero || 0), 0
+      );
 
       const cache = {
-        tecnicos: (u.data || []).map(x => ({
-          id: x.id, nome: x.nome, chapa: x.chapa,
-          matricula: x.chapa, turno: x.turno,
-          especialidade: x.especialidade, role: x.role, ativo: x.ativo
-        })),
-        maquinas: (m.data || []).map(x => ({
-          id: x.id,
-          nome: x.nome,
-          setor: x.setor,
-          area: x.area,
-          prioridade: x.prioridade,
-          status: x.status,
-          qr: x.qr_code,
-          ativo: x.ativo
-        })),
-        paradas: (p.data || []).map(x => ({
-          id: x.id, numero: x.numero,
-          maquinaId: x.maquina_id, maquinaNome: x.maquina,
-          setor: x.setor, area: x.area,
-          turno: x.turno, impacto: x.impacto, status: x.status,
-          // CORREÇÃO: Proteção contra datas nulas que gerariam NaN
-          horaInicio: x.hora_inicio ? new Date(x.hora_inicio).getTime() : Date.now(),
-          horaAssumida: x.hora_assumida ? new Date(x.hora_assumida).getTime() : null,
-          horaFim: x.hora_fim ? new Date(x.hora_fim).getTime() : null,
-          duracaoMin: x.duracao_min,
-          tecnicoId: x.tecnico_id,
-          categoria: x.categoria, subcausa: x.subcausa,
-          componente: x.componente, causaRaiz: x.causa_raiz,
-          acaoComponente: x.acao_componente,
-          acaoPreventiva: x.acao_preventiva, responsavel: x.responsavel, observacao: x.observacao,
-          anexos: (a.data || []).filter(z => z.parada_id === x.id)
-        })),
-        os: (o.data || []).map(x => ({
-          id: x.id, paradaId: x.parada_id, maquinaId: x.maquina_id,
-          titulo: x.titulo, coluna: x.coluna, tecnicoId: x.tecnico_id
+        tecnicos: (u.data || []).map(mapUsuario),
+        maquinas: (m.data || []).map(mapMaquina),
+        paradas:  (p.data || []).map(x => mapParada(x, a.data || [])),
+        os:       (o.data || []).map(x => ({
+          id:        x.id,
+          paradaId:  x.parada_id,
+          maquinaId: x.maquina_id,
+          titulo:    x.titulo,
+          coluna:    x.coluna,
+          tecnicoId: x.tecnico_id
         })),
         equipamentosDescobertos: cached?.equipamentosDescobertos || {},
-        seqParada: maxSeq + 1 // CORREÇÃO: Dinâmico, não mais fixo em 1
+        seqParada: maxSeq + 1,
+        currentUser: cached?.currentUser || null,
+        sessao:      cached?.sessao || null
       };
 
-      console.log(`[api] carregado: ${cache.maquinas.length} máquinas, ${cache.tecnicos.length} técnicos`);
+      console.log(
+        `[api] carregado: ${cache.maquinas.length} máquinas, ${cache.tecnicos.length} técnicos`
+      );
       cacheSet(cache);
       return cache;
 
-    } catch (err) {
-      console.warn('[api] Supabase falhou, usando cache:', err.message);
+    } catch(err){
+      console.warn('[api] Supabase falhou:', err.message);
     }
   }
 
-  /* ---------- Fallback: cache local ---------- */
-  if (cached) {
-    console.info('[api] usando cache local (offline ou erro de rede)');
+  if(cached){
+    console.info('[api] usando cache local');
     return cached;
   }
 
-  /* ---------- Fallback final: seed ---------- */
-  console.info('[api] usando seed (banco vazio ou primeiro acesso)');
+  console.info('[api] usando seed (primeiro acesso)');
   const s = seed();
   cacheSet(s);
   return s;
 }
 
-/* =========================================================
-   SAVE (Offline-First: salva no local, sync é tratado via RPCs)
-   ========================================================= */
-async function save(db) {
+async function save(db){
   cacheSet(db);
   return true;
 }
 
 /* =========================================================
-   RPCs (Funções do Banco de Dados)
+   AUTH — RPCs
    ========================================================= */
-async function cadastrarFuncionario({ nome, chapa, turno, especialidade, role }){
-  const { data, error } = await supabase.rpc('cadastrar_funcionario', {
-    p_nome:          nome,
-    p_chapa:         chapa,
-    p_turno:         turno,
-    p_especialidade: especialidade || 'Multifuncional',
-    p_role:          role || 'tecnico'
-  });
-  if(error) throw new Error(error.message);
-  if(!data?.ok) throw new Error(data?.msg || 'Erro ao cadastrar');
-  return data.funcionario;
-}
-
-async function validarLoginChapa(chapa) {
+async function loginChapa(chapa){
   const { data, error } = await supabase.rpc('login_chapa', { p_chapa: chapa });
-  if (error) throw new Error(error.message);
+  if(error) throw new Error(error.message);
   return data;
 }
 
-async function validarLoginAdmin(login, senha) {
+async function loginAdmin(login, senha){
   const { data, error } = await supabase.rpc('login_admin', {
     p_login: login, p_senha: senha
   });
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-async function criarDirecionamento({ maquinaId, tecnicoIds, paradaId, prioridade, observacao, criadoPorNome }) {
-  const { data, error } = await supabase.rpc('criar_direcionamento', {
-    p_maquina_id: maquinaId,
-    p_tecnico_ids: tecnicoIds,        // array de UUIDs/IDs
-    p_parada_id: paradaId || null,
-    p_prioridade: prioridade || 2,
-    p_observacao: observacao || null,
-    p_criado_por: null,               // Ajuste conforme sua regra de negócio no DB
-    p_criado_nome: criadoPorNome || 'SGA'
-  });
-  if (error) throw new Error(error.message);
-  if (!data?.ok) throw new Error(data?.msg || 'Erro ao direcionar');
-  return data;
-}
-
-async function minhasNotificacoes(usuarioId) {
-  const { data, error } = await supabase.rpc('minhas_notificacoes', { p_usuario_id: usuarioId });
-  if (error) throw new Error(error.message);
-  return data || [];
-}
-
-async function marcarNotifLida(notifId) {
-  const { error } = await supabase.rpc('marcar_notificacao_lida', { p_notif_id: notifId });
-  if (error) throw new Error(error.message);
-}
-
-async function aceitarDirecionamento(direcId, tecnicoId) {
-  const { data, error } = await supabase.rpc('aceitar_direcionamento', {
-    p_direc_id: direcId, p_tecnico_id: tecnicoId
-  });
-  if (error) throw new Error(error.message);
+  if(error) throw new Error(error.message);
   return data;
 }
 
 /* =========================================================
-   API EXPORTADA
+   USUÁRIOS
+   ========================================================= */
+const usuariosApi = {
+  async listar(){
+    const { data, error } = await supabase
+      .from('usuarios').select('*').eq('ativo', true).order('nome');
+    if(error) throw new Error(error.message);
+    return (data || []).map(mapUsuario);
+  },
+
+  async buscarPorChapa(chapa){
+    const { data, error } = await supabase
+      .from('usuarios').select('*').eq('chapa', chapa).maybeSingle();
+    if(error) throw new Error(error.message);
+    return mapUsuario(data);
+  },
+
+  async cadastrar({ nome, chapa, turno, especialidade, role }){
+    const { data, error } = await supabase.rpc('cadastrar_funcionario', {
+      p_nome:          nome,
+      p_chapa:         chapa,
+      p_turno:         turno,
+      p_especialidade: especialidade || 'Multifuncional',
+      p_role:          role || 'tecnico'
+    });
+    if(error) throw new Error(error.message);
+    if(!data?.ok) throw new Error(data?.msg || 'Erro ao cadastrar');
+    return data.funcionario;
+  }
+};
+
+/* =========================================================
+   MÁQUINAS
+   ========================================================= */
+const maquinasApi = {
+  async listar(){
+    const { data, error } = await supabase
+      .from('maquinas').select('*')
+      .order('setor').order('nome');
+    if(error) throw new Error(error.message);
+    return (data || []).map(mapMaquina);
+  },
+
+  async criar({ nome, setor, area, qr, prioridade }){
+    const { data, error } = await supabase
+      .from('maquinas').insert({
+        nome,
+        setor,
+        area:       area || null,
+        qr_code:    qr || null,
+        prioridade: prioridade || 2,
+        status:     'operando',
+        ativo:      true
+      }).select().single();
+    if(error) throw new Error(error.message);
+    return mapMaquina(data);
+  },
+
+  async atualizar(id, patch){
+    const linha = {};
+    if(patch.nome)   linha.nome = patch.nome;
+    if(patch.setor)  linha.setor = patch.setor;
+    if(patch.area)   linha.area = patch.area;
+    if(patch.status) linha.status = patch.status;
+
+    const { data, error } = await supabase
+      .from('maquinas').update(linha).eq('id', id).select().single();
+    if(error) throw new Error(error.message);
+    return mapMaquina(data);
+  }
+};
+
+/* =========================================================
+   PARADAS
+   ========================================================= */
+const paradasApi = {
+  async listar({ status = null, limite = 200 } = {}){
+    let q = supabase
+      .from('paradas')
+      .select('*, maquinas(nome)')
+      .order('hora_inicio', { ascending: false })
+      .limit(limite);
+
+    if(status) q = q.eq('status', status);
+
+    const { data, error } = await q;
+    if(error) throw new Error(error.message);
+
+    return (data || []).map(p => ({
+      ...mapParada({ ...p, maquina: p.maquinas?.nome || '' }, [])
+    }));
+  },
+
+  async buscar(id){
+    const { data, error } = await supabase
+      .from('paradas').select('*, maquinas(nome)')
+      .eq('id', id).single();
+    if(error) throw new Error(error.message);
+    return {
+      ...mapParada({ ...data, maquina: data.maquinas?.nome || '' }, [])
+    };
+  },
+
+  /* =====================================================
+     CRIAR NOVA PARADA
+     ===================================================== */
+  async criar(payload){
+    const linha = {
+      /* Máquina / local */
+      maquina_id:          payload.maquinaId,
+      setor:               payload.setor || null,
+      area:                payload.area || null,
+
+      /* Identificação */
+      data_ocorrencia:     payload.data || new Date().toISOString().slice(0,10), // 🆕
+      turno:               payload.turno,
+      impacto:             payload.impacto || 'Alto',
+      status:              payload.status || 'aguardando',
+
+      /* Técnico */
+      tecnico_id:          payload.tecnicoId || null,
+      responsavel_nome:    payload.responsavel || null,
+      chapa_tecnico:       payload.chapa || payload.chapaTecnico || null,
+
+      /* Falha */
+      categoria:           payload.categoria || null,
+      causa_raiz_categoria: payload.causaRaiz || null,       // 🆕
+      componente:          payload.componente || null,
+      causa_raiz:          payload.causaRaizDetalhe || payload.componente || null,
+
+      /* Ação */
+      acao_componente:     payload.acaoComponente || null,
+      acao_preventiva:     payload.acaoPreventiva || null,
+
+      /* Extras */
+      observacao:          payload.observacao || null,
+
+      /* Tempo */
+      hora_inicio:         new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('paradas').insert(linha).select().single();
+
+    if(error) throw new Error(error.message);
+    return mapParada(data);
+  },
+
+  /* =====================================================
+     ENCERRAR PARADA EXISTENTE
+     ===================================================== */
+  async encerrar(id, patch = {}){
+    const linha = {
+      status:              'encerrada',
+      hora_fim:            new Date().toISOString(),
+
+      /* Permite corrigir os dados no fechamento */
+      categoria:           patch.categoria,
+      causa_raiz_categoria: patch.causaRaiz || null,         // 🆕
+      componente:          patch.componente,
+      causa_raiz:          patch.causaRaizDetalhe || patch.componente,
+      acao_componente:     patch.acaoComponente,
+      acao_preventiva:     patch.acaoPreventiva || null,     // 🆕
+      observacao:          patch.observacao
+    };
+
+    /* Remove chaves undefined/null que não devem ser atualizadas */
+    Object.keys(linha).forEach(k => {
+      if(linha[k] === undefined) delete linha[k];
+    });
+
+    const { data, error } = await supabase
+      .from('paradas').update(linha).eq('id', id).select().single();
+
+    if(error) throw new Error(error.message);
+    return mapParada(data);
+  }
+};
+
+/* =========================================================
+   EXPORT
    ========================================================= */
 export const api = {
-  // Core
+  /* core */
   load,
   save,
 
-  // Autenticação
-  validarLoginChapa,
-  validarLoginAdmin,
+  /* sub-módulos */
+  auth: {
+    loginChapa,
+    loginAdmin
+  },
+  usuarios: usuariosApi,
+  maquinas: maquinasApi,
+  paradas:  paradasApi,
 
-  // Equipe e Direcionamento
-  cadastrarFuncionario,
-  criarDirecionamento,
-  aceitarDirecionamento,
-  
-  // Notificações
-  minhasNotificacoes,
-  marcarNotifLida,
-
-  /* 
-   * Stubs para operações que são tratadas 100% no estado local (offline-first).
-   * O `equipe.service.js` e `registro.service.js` atualizam o `state.db` e chamam `api.save()`.
-   * A sincronização com o Supabase deve ser feita via triggers no banco ou jobs em segundo plano.
-   */
-  async criarParada() { return null; },
-  async atualizarParada() { return null; },
-  async assumirParada() { return null; },
-  async moverOS() { return null; },
-  async uploadAnexo() { return null; }
+  /* aliases de compatibilidade */
+  validarLoginChapa: loginChapa,
+  validarLoginAdmin: loginAdmin,
+  cadastrarFuncionario: usuariosApi.cadastrar
 };

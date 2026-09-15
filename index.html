@@ -3,19 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <meta name="theme-color" content="#C8102E">
-  <title>Gestão de Paradas — Manutenção Seara</title>
+  <meta name="theme-color" content="#142B47">
+  <title>Gestão de Paradas — Manutenção</title>
 
-  <!-- ============================================================
-       CSS — tokens → base → layout → components → views
-       ============================================================ -->
-
-  <!-- 1) Base -->
+  <!-- Base -->
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/layout.css">
 
-  <!-- 2) Componentes -->
+  <!-- Componentes -->
   <link rel="stylesheet" href="css/components/chip.css">
   <link rel="stylesheet" href="css/components/card.css">
   <link rel="stylesheet" href="css/components/button.css">
@@ -30,7 +26,8 @@
   <link rel="stylesheet" href="css/components/anexos.css">
   <link rel="stylesheet" href="css/components/parada-detail.css">
 
-  <!-- 3) Views -->
+  <!-- Views -->
+  <link rel="stylesheet" href="css/views/login.css">
   <link rel="stylesheet" href="css/views/radar.css">
   <link rel="stylesheet" href="css/views/registro.css">
   <link rel="stylesheet" href="css/views/maquinas.css">
@@ -39,11 +36,23 @@
   <link rel="stylesheet" href="css/views/tecnico.css">
   <link rel="stylesheet" href="css/views/extrato.css">
   <link rel="stylesheet" href="css/views/relatorios.css">
-<link rel="stylesheet" href="css/views/login.css">
-  <!-- (Opcional) PWA
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="assets/icons/favicon.ico">
-  -->
+
+  <!-- Esconde o shell admin na tela de login -->
+  <style>
+    body.route-login #sidebar,
+    body.route-login #topbar,
+    body.route-login #bottomnav {
+      display: none !important;
+    }
+    body.route-login #main {
+      width: 100%;
+      min-height: 100vh;
+    }
+    body.route-login #view {
+      padding: 0;
+      max-width: none;
+    }
+  </style>
 </head>
 <body>
 
@@ -51,7 +60,7 @@
 
   <div id="app">
 
-    <!-- ---------- Sidebar (desktop ≥900px) ---------- -->
+    <!-- Sidebar (desktop) -->
     <aside id="sidebar">
       <div class="brand">
         <div class="mark">☀</div>
@@ -107,7 +116,7 @@
       </button>
     </aside>
 
-    <!-- ---------- Coluna principal ---------- -->
+    <!-- Coluna principal -->
     <div id="main">
       <header id="topbar">
         <div class="greet" id="greetText">
@@ -118,10 +127,11 @@
         </div>
       </header>
 
+      <!-- ⚡ OUTLET do router -->
       <main id="view"></main>
     </div>
 
-    <!-- ---------- Bottom nav (mobile <900px) ---------- -->
+    <!-- Bottom nav (mobile) -->
     <nav id="bottomnav">
       <button class="nav-item active" data-view="radar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -172,7 +182,7 @@
     </nav>
   </div>
 
-  <!-- ---------- PORTALS ---------- -->
+  <!-- Portais -->
   <div id="modalRoot"></div>
 
   <div class="undo-bar" id="undoBar">
@@ -190,13 +200,13 @@
     <div class="qr-hint" id="qrHint">Procurando código…</div>
   </div>
 
-  <!-- ---------- SCRIPTS ---------- -->
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script type="module" src="js/app.js"></script>
 
   <noscript>
-    <div style="padding:24px; text-align:center; font-family:sans-serif; color:#1A1614;">
-      Este aplicativo requer JavaScript habilitado para funcionar.
+    <div style="padding:24px;text-align:center;font-family:sans-serif;color:#0F172A;">
+      Este aplicativo requer JavaScript habilitado.
     </div>
   </noscript>
 

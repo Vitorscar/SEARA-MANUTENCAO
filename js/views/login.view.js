@@ -1,15 +1,18 @@
 /* =========================================================
-   login.view.js — chapa (funcionário) + admin (backup)
+   login.view.js — chapa (funcionário) + admin (SGA)
    ========================================================= */
 
 import { loginPorChapa, loginAdmin } from '../services/auth.service.js';
-import { CHAPA_REGEX } from '../data/turnos.js';
-import { toast } from '../ui/toast.js';
-import { navigate } from '../core/router.js'; // ← Adicionado para navegação SPA
+import { CHAPA_REGEX }               from '../data/turnos.js';
+import { toast }                     from '../ui/toast.js';
+import { navigate }                  from '../core/router.js';
 
-let aba = 'chapa'; // 'chapa' | 'admin'
+let aba = 'chapa';
 
-export function renderLogin() {
+/* =========================================================
+   RENDER
+   ========================================================= */
+export function renderLogin(){
   document.getElementById('view').innerHTML = `
     <div class="login-wrap">
       <div class="login-card">
@@ -33,7 +36,7 @@ export function renderLogin() {
 
         <div class="login-body" id="loginBody"></div>
         <div class="login-foot" id="loginFoot"></div>
-        
+
       </div>
     </div>
   `;
@@ -51,58 +54,47 @@ export function renderLogin() {
 }
 
 /* =========================================================
-   Corpo da aba
+   Corpo da aba ativa
    ========================================================= */
-function renderCorpo() {
+function renderCorpo(){
   const body = document.getElementById('loginBody');
   const foot = document.getElementById('loginFoot');
 
-  /* ---------- CHAPA ---------- */
-  if (aba === 'chapa') {
-    foot.textContent = 'Use a chapa de 9 dígitos. O acesso é liberado apenas durante seu turno.';
+  if(aba === 'chapa'){
+    foot.textContent = 'Digite sua chapa de 9 dígitos para entrar.';
+
     body.innerHTML = `
       <form id="formChapa" class="login-form" autocomplete="off" novalidate>
         <div class="field">
           <label for="fChapa">Número da chapa</label>
-          <input type="text"
-                 id="fChapa"
-                 class="chapa-input"
-                 inputmode="numeric"
-                 pattern="\\d{9}"
-                 maxlength="9"
+          <input type="text" id="fChapa" class="chapa-input"
+                 inputmode="numeric" maxlength="9"
                  placeholder="000000000"
-                 autocomplete="username"
-                 spellcheck="false">
+                 autocomplete="username" spellcheck="false">
           <small class="chapa-hint">9 dígitos · apenas números</small>
         </div>
-
-        <button type="submit" class="btn block primary" id="btnEntrar">
-          Entrar
-        </button>
-
+        <button type="submit" class="btn block primary" id="btnEntrar">Entrar</button>
         <p id="msgLogin" class="login-msg"></p>
       </form>
     `;
 
     const form = document.getElementById('formChapa');
-    const inp = document.getElementById('fChapa');
-    const btn = document.getElementById('btnEntrar');
-    const msg = document.getElementById('msgLogin');
+    const inp  = document.getElementById('fChapa');
+    const btn  = document.getElementById('btnEntrar');
+    const msg  = document.getElementById('msgLogin');
 
-    /* Filtra digitação: só números */
     inp.addEventListener('input', () => {
       const limpo = inp.value.replace(/\D/g, '').slice(0, 9);
-      if (limpo !== inp.value) inp.value = limpo;
+      if(limpo !== inp.value) inp.value = limpo;
 
-      /* Feedback em tempo real */
-      if (limpo.length === 0) {
-        inp.classList.remove('ok', 'erro');
+      if(limpo.length === 0){
+        inp.classList.remove('ok','erro');
         msg.textContent = '';
-      } else if (limpo.length < 9) {
-        inp.classList.remove('ok', 'erro');
+      } else if(limpo.length < 9){
+        inp.classList.remove('ok','erro');
         msg.textContent = `${limpo.length}/9 dígitos`;
-        msg.style.color = 'var(--muted)';
-      } else if (CHAPA_REGEX.test(limpo)) {
+        msg.style.color = 'var(--ink-soft)';
+      } else if(CHAPA_REGEX.test(limpo)){
         inp.classList.add('ok');
         inp.classList.remove('erro');
         msg.textContent = 'Chapa válida ✓';
@@ -115,7 +107,6 @@ function renderCorpo() {
       }
     });
 
-    /* Colar — garante que só números entram */
     inp.addEventListener('paste', e => {
       e.preventDefault();
       const colado = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 9);
@@ -135,24 +126,11 @@ function renderCorpo() {
         msg.textContent = `Acesso autorizado. Bem-vindo, ${u.nome.split(' ')[0]}!`;
         msg.style.color = 'var(--green)';
         toast(`Bem-vindo, ${u.nome.split(' ')[0]}`, 'green');
-        
-        /* Navegação SPA em vez de reload */
-        setTimeout(() => navigate('radar'), 500);
-        
-      } catch (err) {
+        setTimeout(() => navigate('radar'), 400);
+      } catch(err){
         inp.classList.add('erro');
         msg.textContent = err.message || 'Falha na autenticação';
         msg.style.color = 'var(--red)';
-        
-        if (err.detalhe) {
-          const d = document.createElement('small');
-          d.style.display = 'block';
-          d.style.color = 'var(--muted)';
-          d.style.marginTop = '4px';
-          d.textContent = err.detalhe;
-          msg.appendChild(d);
-        }
-        
         btn.disabled = false;
         btn.textContent = 'Entrar';
         inp.select();
@@ -162,39 +140,26 @@ function renderCorpo() {
     setTimeout(() => inp.focus(), 60);
   }
 
-  /* ---------- ADMIN ---------- */
   else {
-    foot.textContent = 'Acesso restrito à coordenação de manutenção.';
+    foot.textContent = 'Acesso restrito à coordenação.';
     body.innerHTML = `
       <form id="formAdmin" class="login-form" autocomplete="on">
         <div class="field">
           <label for="fAdminLogin">Login</label>
-          <input type="text" 
-                 id="fAdminLogin" 
-                 placeholder="Digite seu usuário"
-                 autocomplete="username" 
-                 value="">
+          <input type="text" id="fAdminLogin" placeholder="Digite seu usuário" autocomplete="username">
         </div>
         <div class="field">
           <label for="fAdminSenha">Senha</label>
-          <input type="password" 
-                 id="fAdminSenha" 
-                 placeholder="Digite sua senha"
-                 autocomplete="current-password" 
-                 value=""> <!-- Removido value="123456" por segurança -->
+          <input type="password" id="fAdminSenha" placeholder="Digite sua senha" autocomplete="current-password">
         </div>
-
-        <button type="submit" class="btn block primary" id="btnAdmin">
-          Entrar como administrador
-        </button>
-
+        <button type="submit" class="btn block primary" id="btnAdmin">Entrar como administrador</button>
         <p id="msgAdmin" class="login-msg"></p>
       </form>
     `;
 
     const form = document.getElementById('formAdmin');
-    const btn = document.getElementById('btnAdmin');
-    const msg = document.getElementById('msgAdmin');
+    const btn  = document.getElementById('btnAdmin');
+    const msg  = document.getElementById('msgAdmin');
 
     form.onsubmit = async e => {
       e.preventDefault();
@@ -207,19 +172,13 @@ function renderCorpo() {
           document.getElementById('fAdminLogin').value.trim(),
           document.getElementById('fAdminSenha').value
         );
-        
         toast(`Bem-vindo, ${u.nome}`, 'green');
-        
-        /* Navegação SPA em vez de reload */
         setTimeout(() => navigate('radar'), 400);
-        
-      } catch (err) {
+      } catch(err){
         msg.textContent = err.message || 'Credenciais inválidas';
         msg.style.color = 'var(--red)';
         btn.disabled = false;
         btn.textContent = 'Entrar como administrador';
-        
-        // Limpa a senha em caso de erro para segurança
         document.getElementById('fAdminSenha').value = '';
         document.getElementById('fAdminLogin').focus();
       }

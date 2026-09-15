@@ -1,53 +1,126 @@
 /* =========================================================
-   app.js — boot, wiring global e exposição para onclick inline
+   app.js — boot + wiring
+   Login primeiro, resto carregado sob demanda (lazy)
+   Auto-expose: todo export das views vai pro window
    ========================================================= */
+
+/* ---------- Essencial (top-level, nunca quebra) ---------- */
+import { initState, state, salvarDB }              from './core/state.js';
+import { registerRoute, initRouter, navigate, render } from './core/router.js';
+import { on }                                       from './core/events.js';
+import { turnoAtual, nowStr }                       from './core/utils.js';
+import { estaLogado, logout }                       from './services/auth.service.js';
+import { toast }                                    from './ui/toast.js';
+import { closeModal }                               from './ui/modal.js';
+
+/* ---------- Login: import direto (essencial) ---------- */
+import * as loginView from './views/login.view.js';
 
 /* =========================================================
-   1) IMPORTS
+   CONFIGURAÇÕES
    ========================================================= */
-// Core
-import { initState, state, salvarDB } from './core/state.js';
-import { registrarView, navigate, render } from './core/router.js';
-import { on } from './core/events.js';
-import { turnoAtual, nowStr } from './core/utils.js';
-
-// UI & Utils
-import { closeModal } from './ui/modal.js';
-import { desfazer } from './ui/undo.js';
-import { toast } from './ui/toast.js';
-import { abrirDetalheParada, abrirDetalheParadaPorId, abrirZoom, exportarParada } from './ui/parada-detail.js';
-
-// Serviços
-import { estaLogado, logout } from './services/auth.service.js';
-import { toggleDitado } from './services/voz.service.js';
-import { abrirQR, fecharQR } from './services/qr.service.js';
-
-// Views
-import { renderLogin } from './views/login.view.js';
-import { renderRadar, irParaRegistro, abrirAtender, abrirVoltou, abrirAssumir, confirmarAssumir, abrirEncerrar, irParaEncerramento, abrirCorrigir } from './views/radar.view.js';
-import { renderRegistro, salvarRegistro, cancelarRegistro, onFoto, onVideo, toggleAudio, removerAnexoItem } from './views/registro.view.js';
-import { renderMaquinas, abrirNovaMaquina, confirmarNovaMaquina, registrarParaMaquina } from './views/maquinas.view.js';
-import { renderOS } from './views/os.view.js';
-import { renderRelatorios, exportarCSV, limparFiltrosRelatorios } from './views/relatorios.view.js';
-import { renderEquipe, abrirNovoTecnico, confirmarNovoTecnico, abrirEditarTecnico, confirmarEditarTecnico, confirmarDesativar, abrirDirecionar, confirmarDirecionar, limparFiltrosEquipe } from './views/equipe.view.js';
-import { renderTecnico } from './views/tecnico.view.js';
+const SCHEMA_VERSION = 'v6';
 
 /* =========================================================
-   2) CONFIGURAÇÕES GLOBAIS
+   GUARDS
    ========================================================= */
-const SCHEMA_VERSION = 'v3';
-let clockIntervalId = null;
+const isLoggedIn = () => !!state.db?.currentUser || estaLogado();
+const isAdmin    = () => (state.db?.currentUser || {}).role === 'admin';
 
 /* =========================================================
-   3) FUNÇÕES DE SETUP (Wiring)
+   WRAPPER — transforma função de view em controller
+   + seta a classe do body pra esconder shell no login
    ========================================================= */
-function setupNetwork() {
-  function atualizarRede() {
+function wrapView(fn, routePath){
+  return {
+    async mount(_root, params){
+      document.body.className = 'route-' + (routePath || 'view');
+      await fn(params);
+    },
+    unmount(){}
+  };
+}
+
+/* =========================================================
+   AUTO-EXPOSE — joga todos os exports de um módulo em window
+   Assim os onclick/onsubmit inline do HTML encontram as funções
+   ========================================================= */
+function autoExpose(modulo, opts = {}){
+  const { ignore = [] } = opts;
+  let count = 0;
+
+  Object.keys(modulo).forEach(key => {
+    if(ignore.includes(key)) return;
+    if(typeof window[key] === 'undefined'){
+      window[key] = modulo[key];
+      count++;
+    }
+  });
+
+  return count;
+}
+
+/* =========================================================
+   ROTAS ESSENCIAIS
+   ========================================================= */
+registerRoute('login', {
+  controller: wrapView(loginView.renderLogin, 'login')
+});
+
+/* Expor exports do login direto */
+autoExpose(loginView);
+
+/* =========================================================
+   ROTAS SOB DEMANDA (lazy)
+   Cada view = { path, módulo, export da função de render, guard }
+   ========================================================= */
+const LAZY_ROUTES = [
+  { path: 'radar',      modulo: './views/radar.view.js',      render: 'renderRadar',      guard: isLoggedIn },
+  { path: 'registro',   modulo: './views/registro.view.js',   render: 'renderRegistro',   guard: isLoggedIn },
+  { path: 'maquinas',   modulo: './views/maquinas.view.js',   render: 'renderMaquinas',   guard: isLoggedIn },
+  { path: 'os',         modulo: './views/os.view.js',         render: 'renderOS',         guard: isLoggedIn },
+  { path: 'equipe',     modulo: './views/equipe.view.js',     render: 'renderEquipe',     guard: isAdmin    },
+  { path: 'tecnico',    modulo: './views/tecnico.view.js',    render: 'renderTecnico',    guard: isAdmin    },
+  { path: 'relatorios', modulo: './views/relatorios.view.js', render: 'renderRelatorios', guard: isLoggedIn }
+];
+
+async function registrarRotasLazy(){
+  for(const item of LAZY_ROUTES){
+    try {
+      const m = await import(item.modulo);
+
+      /* ⚡ expõe tudo (salvarRegistro, onFoto, chips, etc) */
+      autoExpose(m);
+
+      /* Registra a rota com o controller */
+      const fn = m[item.render];
+      if(typeof fn !== 'function'){
+        console.warn(`[app] "${item.modulo}" não exporta "${item.render}"`);
+        continue;
+      }
+
+      registerRoute(item.path, {
+        controller: wrapView(fn, item.path),
+        guard: item.guard
+      });
+
+    } catch(err){
+      console.warn(`[app] rota "${item.path}" não registrada:`, err.message);
+    }
+  }
+}
+
+/* =========================================================
+   WIRING GLOBAL
+   ========================================================= */
+
+/* ---------- Rede ---------- */
+function setupNetwork(){
+  function atualizarRede(){
     const pill = document.getElementById('net-pill');
-    const txt = document.getElementById('netText');
-    if (!pill || !txt) return;
-    
-    if (navigator.onLine) {
+    const txt  = document.getElementById('netText');
+    if(!pill || !txt) return;
+    if(navigator.onLine){
       pill.classList.remove('offline');
       txt.textContent = 'Online';
     } else {
@@ -55,195 +128,75 @@ function setupNetwork() {
       txt.textContent = 'Offline';
     }
   }
-  
-  window.addEventListener('online', atualizarRede);
+  window.addEventListener('online',  atualizarRede);
   window.addEventListener('offline', atualizarRede);
   atualizarRede();
 }
 
-function setupKeyboard() {
+/* ---------- Teclado ---------- */
+function setupKeyboard(){
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
+    if(e.key === 'Escape'){
       closeModal();
       const qr = document.getElementById('qrOverlay');
-      if (qr?.classList.contains('ativo')) fecharQR();
+      if(qr?.classList.contains('ativo')){
+        try { window.fecharQR?.(); } catch(_){}
+      }
     }
   });
 }
 
-function setupNavigation() {
+/* ---------- Nav ---------- */
+function setupNavigation(){
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
-      const targetView = btn.dataset.view;
-      if (targetView) navigate(targetView);
+      if(btn.dataset.view) navigate(btn.dataset.view);
     });
   });
 }
 
-function setupBeforeUnload() {
+/* ---------- Aviso de saída ---------- */
+function setupBeforeUnload(){
   window.addEventListener('beforeunload', e => {
-    if (!state.db?.paradas) return;
-    const hasOpenParadas = state.db.paradas.some(p => p.status !== 'encerrada');
-    if (hasOpenParadas) {
+    if(!state.db?.paradas) return;
+    if(state.db.paradas.some(p => p.status !== 'encerrada')){
       e.preventDefault();
       e.returnValue = '';
     }
   });
 }
 
-function startClock() {
-  if (clockIntervalId) clearInterval(clockIntervalId);
-
-  function tick() {
+/* ---------- Relógio ---------- */
+let clockIntervalId = null;
+function startClock(){
+  if(clockIntervalId) clearInterval(clockIntervalId);
+  function tick(){
     const el = document.getElementById('greetText');
-    if (!el) return;
-
+    if(!el) return;
     const h = new Date().getHours();
     const saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
     const user = state.db?.currentUser;
     const nome = user?.nome ? user.nome.split(' ')[0] : 'Visitante';
-
     el.innerHTML = `${saud}, ${nome}.<span class="time">${turnoAtual()} · ${nowStr()}</span>`;
   }
-
   tick();
   clockIntervalId = setInterval(tick, 30000);
 }
 
-/* =========================================================
-   4) SISTEMA DE NOTIFICAÇÕES
-   ========================================================= */
-async function atualizarNotificacoes() {
+/* ---------- Topbar: chip do usuário ---------- */
+function montarTopbarUsuario(){
   const user = state.db?.currentUser;
-  if (!user || user.role === 'admin') return;
-
-  try {
-    const { api } = await import('./data/api.js');
-    const lista = await api.minhasNotificacoes(user.id);
-    const naoLidas = lista.filter(n => !n.lida).length;
-
-    const el = document.getElementById('notifCount');
-    if (el) {
-      el.textContent = naoLidas;
-      el.classList.toggle('hidden', naoLidas === 0);
-    }
-    window.__notificacoes = lista;
-  } catch (e) {
-    // Offline ou erro silencioso
-  }
-}
-
-async function abrirNotificacoes() {
-  const lista = window.__notificacoes || [];
-  const { openModal } = await import('./ui/modal.js');
-
-  const html = lista.length === 0
-    ? `<div class="empty" style="padding:20px; text-align:center;">Nenhuma notificação.</div>`
-    : lista.map(n => `
-        <div class="notif-item ${n.lida ? 'lida' : ''}" style="cursor:pointer; padding:10px; border-bottom:1px solid var(--border);" onclick="marcarLida('${n.id}')">
-          <div style="font-weight:700; font-size:13px;">${n.titulo}</div>
-          <div style="font-size:12.5px; color:var(--muted); margin-top:4px;">${n.mensagem}</div>
-          <div style="font-size:10.5px; color:var(--muted-2); margin-top:6px;">${new Date(n.criado_em).toLocaleString('pt-BR')}</div>
-        </div>
-      `).join('');
-
-  openModal('', '🔔', 'Notificações', html);
-}
-
-async function setupNotificacoes() {
-  const user = state.db?.currentUser;
-  if (!user || user.role === 'admin') return;
-
+  if(!user) return;
   const topbar = document.getElementById('topbar');
-  if (!topbar || topbar.querySelector('#notif-sino')) return;
+  if(!topbar) return;
 
-  const btn = document.createElement('button');
-  btn.id = 'notif-sino';
-  btn.className = 'notif-sino';
-  btn.title = 'Notificações';
-  btn.innerHTML = `🔔<span class="notif-badge hidden" id="notifCount">0</span>`;
-  btn.onclick = abrirNotificacoes;
-  topbar.appendChild(btn);
+  const existing = topbar.querySelector('.user-chip');
+  if(existing) existing.remove();
 
-  await atualizarNotificacoes();
-  setInterval(atualizarNotificacoes, 30000);
-}
-
-/* =========================================================
-   5) REGISTRO DE VIEWS NO ROUTER
-   ========================================================= */
-registrarView('login', renderLogin);
-registrarView('radar', renderRadar);
-registrarView('registro', renderRegistro);
-registrarView('maquinas', renderMaquinas);
-registrarView('os', renderOS);
-registrarView('equipe', renderEquipe);
-registrarView('tecnico', renderTecnico);
-registrarView('relatorios', renderRelatorios);
-
-/* =========================================================
-   6) EVENTOS DESACOPLADOS
-   ========================================================= */
-on('undo:aplicado', render);
-
-/* =========================================================
-   7) EXPOSIÇÃO GLOBAL (para onclick inline no HTML)
-   ========================================================= */
-Object.assign(window, {
-  /* Navegação e Estado */
-  __render: render,
-  navigate,
-  __utils: { turnoAtual, nowStr },
-  
-  /* Ficha do Técnico */
-  abrirTecnico: (id) => {
-    state.tecnicoAtualId = id;
-    navigate('tecnico', { id });
-  },
-
-  /* Notificações */
-  marcarLida: async (id) => {
-    const { api } = await import('./data/api.js');
-    await api.marcarNotifLida(id);
-    await atualizarNotificacoes();
-    // Reabre o modal para atualizar a UI
-    abrirNotificacoes();
-  },
-
-  /* Radar */
-  irParaRegistro, abrirAtender, abrirVoltou, abrirAssumir, confirmarAssumir, abrirEncerrar, irParaEncerramento, abrirCorrigir,
-
-  /* Registro */
-  salvarRegistro, cancelarRegistro, toggleDitado, onFoto, onVideo, toggleAudio, removerAnexoItem,
-
-  /* Máquinas */
-  abrirNovaMaquina, confirmarNovaMaquina, registrarParaMaquina,
-
-  /* Equipe */
-  abrirNovoTecnico, confirmarNovoTecnico, abrirEditarTecnico, confirmarEditarTecnico, confirmarDesativar, abrirDirecionar, confirmarDirecionar, limparFiltrosEquipe,
-
-  /* Detalhe da parada */
-  abrirDetalheParada, abrirDetalheParadaPorId, abrirZoom, exportarParada,
-
-  /* QR e UI Geral */
-  abrirQR, fecharQR, exportarCSV, limparFiltrosRelatorios, logout, closeModal, desfazer
-});
-
-/* =========================================================
-   8) UI: TOPBAR
-   ========================================================= */
-function montarTopbarUsuario() {
-  const user = state.db?.currentUser;
-  if (!user) return;
-
-  const topbar = document.getElementById('topbar');
-  if (!topbar) return;
-
-  const existingChip = topbar.querySelector('.user-chip');
-  if (existingChip) existingChip.remove();
-
-  const iniciais = user.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-  const roleLabel = user.role === 'admin' ? 'ADM' : (user.role === 'supervisor' ? 'SUP' : 'TEC');
+  const iniciais = user.nome.split(' ').map(n => n[0]).slice(0,2).join('').toUpperCase();
+  const roleLabel = user.role === 'admin' ? 'ADM'
+                  : user.role === 'supervisor' ? 'SUP'
+                  : 'TEC';
 
   const chip = document.createElement('button');
   chip.type = 'button';
@@ -254,56 +207,91 @@ function montarTopbarUsuario() {
     <span>${user.nome.split(' ')[0]}</span>
     <span class="uc-role ${user.role}">${roleLabel}</span>
   `;
-  
   chip.onclick = () => {
-    if (confirm(`Sair da conta de ${user.nome}?`)) logout();
+    if(confirm(`Sair da conta de ${user.nome}?`)) logout();
   };
-  
   topbar.appendChild(chip);
 }
 
 /* =========================================================
-   9) BOOT PRINCIPAL (Orquestração)
+   EVENTOS
    ========================================================= */
-async function boot() {
-  try {
-    // 1. Verificação e limpeza de schema
-    if (localStorage.getItem('schema_version') !== SCHEMA_VERSION) {
-      console.log('[boot] Schema alterado. Limpando cache local...');
-      ['manure_seara_v1', 'seara_cache', 'seara_sessao_v1', 'manutencao_seara_v1'].forEach(key => {
-        localStorage.removeItem(key);
-      });
-      localStorage.setItem('schema_version', SCHEMA_VERSION);
-    }
+on('undo:aplicado', () => { render(); });
 
-    // 2. Inicializa o estado (aguarda carga do Supabase/Local)
-    await initState();
+/* =========================================================
+   EXPOSIÇÃO GLOBAL — helpers do próprio app
+   (as views se auto-expõem via autoExpose)
+   ========================================================= */
+Object.assign(window, {
+  /* Core */
+  navigate,
+  logout,
+  render,
+  __render: render,
 
-    // 3. Configura listeners globais
-    setupNetwork();
-    setupKeyboard();
-    setupNavigation();
-    setupBeforeUnload();
+  /* UI */
+  closeModal,
+  toast,
 
-    // 4. Inicia relógio
-    startClock();
+  /* Utils */
+  turnoAtual,
+  nowStr,
+  __utils: { turnoAtual, nowStr },
 
-    // 5. Roteamento inicial e setups dependentes de login
-    if (estaLogado()) {
-      montarTopbarUsuario();
-      await setupNotificacoes(); // ← Integrado corretamente aqui
-      navigate('radar');
-    } else {
-      navigate('login');
-    }
+  /* Navegação específica */
+  tecnicoVoltar: () => navigate('equipe')
+});
 
-    console.log('[boot] Aplicação inicializada com sucesso.');
-  } catch (error) {
-    console.error('[boot] Falha crítica na inicialização:', error);
-    toast('Erro ao carregar o sistema. Verifique sua conexão e recarregue a página.', 'red');
-    navigate('login');
+/* =========================================================
+   BOOT
+   ========================================================= */
+async function boot(){
+  /* 1) Reset de cache se schema mudou */
+  if(localStorage.getItem('schema_version') !== SCHEMA_VERSION){
+    console.log('[boot] schema novo — limpando cache');
+    ['seara_cache', 'seara_cache_v2', 'seara_sessao_v1',
+     'manutencao_seara_v1', 'manure_seara_v1'].forEach(k =>
+      localStorage.removeItem(k)
+    );
+    localStorage.setItem('schema_version', SCHEMA_VERSION);
   }
+
+  /* 2) Init state (com fallback garantido) */
+  try {
+    await initState();
+  } catch(err){
+    console.error('[boot] initState falhou:', err);
+    if(!state.db){
+      state.db = {
+        maquinas: [], tecnicos: [], paradas: [], os: [],
+        usuarios: [], equipamentosDescobertos: {}, seqParada: 1,
+        currentUser: null, sessao: null
+      };
+    }
+  }
+
+  /* 3) Wiring de UI (independente do login) */
+  setupNetwork();
+  setupKeyboard();
+  setupNavigation();
+  setupBeforeUnload();
+  startClock();
+
+  /* 4) Registra rotas lazy + auto-expose */
+  await registrarRotasLazy();
+
+  /* 5) Rota inicial */
+  const logado = estaLogado() || !!state.db?.currentUser;
+
+  if(!logado){
+    console.log('[boot] não logado → login');
+    initRouter('login');
+    return;
+  }
+
+  montarTopbarUsuario();
+  console.log(`[boot] logado como ${state.db.currentUser?.role} → radar`);
+  initRouter('radar');
 }
 
-// Inicia a aplicação
 boot();
