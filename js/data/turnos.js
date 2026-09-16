@@ -21,15 +21,15 @@ export const TURNOS_CONFIG = {
   }
 };
 
-/* Regex da chapa: exatamente 9 dígitos */
-export const CHAPA_REGEX = /^\d{9}$/;
+/* Regex da chapa: exatamente 10 dígitos */
+export const CHAPA_REGEX = /^\d{10}$/;
 
 /* Mensagens (fonte única) */
 export const MSG = {
-  CHAPA_INVALIDA:     'Número da chapa inválido. Informe uma chapa com 9 dígitos.',
-  NAO_ENCONTRADO:     'Funcionário não encontrado. Verifique o número da chapa.',
-  INATIVO:            'Funcionário inativo. Procure o RH.',
-  FORA_TURNO:         'Acesso bloqueado. Você está fora do horário do seu turno.',
-  SEM_TURNO:          'Funcionário sem turno cadastrado. Procure o supervisor.',
-  AUTORIZADO:         'Acesso autorizado. Bem-vindo ao Sistema de Manutenção.'
+  CHAPA_INVALIDA:  'Número da chapa inválido. Informe uma chapa com 10 dígitos.',
+  NAO_ENCONTRADO:  'Funcionário não encontrado. Verifique o número da chapa.',
+  INATIVO:         'Funcionário inativo. Procure o RH.',
+  FORA_TURNO:      'Acesso bloqueado. Você está fora do horário do seu turno.',
+  SEM_TURNO:       'Funcionário sem turno cadastrado. Procure o supervisor.',
+  AUTORIZADO:      'Acesso autorizado. Bem-vindo ao Sistema de Manutenção.'
 };

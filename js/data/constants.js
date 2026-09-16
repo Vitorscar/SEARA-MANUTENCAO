@@ -68,12 +68,41 @@ export const IMPACTOS = ["Baixo", "Médio", "Alto", "Crítico"];
 /* ---------- TURNOS ---------- */
 export const TURNOS = ["1º Turno", "2º Turno", "3º Turno"];
 
-/* ---------- ESPECIALIDADES ---------- */
-export const ESPECIALIDADES = [
-  "Mecânica", "Elétrica", "Hidráulica", "Automação",
-  "Refrigeração", "Civil", "Multifuncional"
-];
+/* =========================================================
+   CARGOS — funções de fábrica (Seara/JBS)
+   ========================================================= */
+export const CARGOS = [
+  "Técnico Eletromecânico I",
+  "Técnico Eletromecânico II",
+  "Técnico Eletromecânico III",
 
+  "Técnico Eletricista I",
+  "Técnico Eletricista II",
+  "Técnico Eletricista III",
+
+  "Técnico Mecânico II",
+  "Técnico Mecânico III",
+
+  "Mecânico de Manutenção III",
+  "Eletricista de Manutenção I",
+  "Eletricista de Manutenção III",
+
+  "Operador de Máquinas e Equipamentos II",
+  "Operador de Máquinas e Equipamentos III",
+
+  "Operador de Sistema de Refrigeração I",
+  "Operador de Sistema de Refrigeração II",
+  "Operador de Sistema de Refrigeração III",
+
+  "Operador de Caldeiras I",
+  "Operador de Caldeiras II",
+  "Operador de Caldeiras III",
+
+  "Supervisor de Manutenção",
+  "Supervisor de Utilidades",
+
+  "Administrador"
+];
 /* ---------- PERFIS ---------- */
 export const ROLES = ["admin", "tecnico", "supervisor"];
 

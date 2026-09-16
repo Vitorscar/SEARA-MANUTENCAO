@@ -61,17 +61,17 @@ function renderCorpo(){
   const foot = document.getElementById('loginFoot');
 
   if(aba === 'chapa'){
-    foot.textContent = 'Digite sua chapa de 9 dígitos para entrar.';
+    foot.textContent = 'Digite sua chapa de 10 dígitos para entrar.';
 
     body.innerHTML = `
       <form id="formChapa" class="login-form" autocomplete="off" novalidate>
         <div class="field">
           <label for="fChapa">Número da chapa</label>
           <input type="text" id="fChapa" class="chapa-input"
-                 inputmode="numeric" maxlength="9"
-                 placeholder="000000000"
+                 inputmode="numeric" maxlength="10"
+                 placeholder="0000000000"
                  autocomplete="username" spellcheck="false">
-          <small class="chapa-hint">9 dígitos · apenas números</small>
+          <small class="chapa-hint">10 dígitos · apenas números</small>
         </div>
         <button type="submit" class="btn block primary" id="btnEntrar">Entrar</button>
         <p id="msgLogin" class="login-msg"></p>
@@ -84,15 +84,15 @@ function renderCorpo(){
     const msg  = document.getElementById('msgLogin');
 
     inp.addEventListener('input', () => {
-      const limpo = inp.value.replace(/\D/g, '').slice(0, 9);
+      const limpo = inp.value.replace(/\D/g, '').slice(0, 10);
       if(limpo !== inp.value) inp.value = limpo;
 
       if(limpo.length === 0){
         inp.classList.remove('ok','erro');
         msg.textContent = '';
-      } else if(limpo.length < 9){
+      } else if(limpo.length < 10){
         inp.classList.remove('ok','erro');
-        msg.textContent = `${limpo.length}/9 dígitos`;
+        msg.textContent = `${limpo.length}/10 dígitos`;
         msg.style.color = 'var(--ink-soft)';
       } else if(CHAPA_REGEX.test(limpo)){
         inp.classList.add('ok');
@@ -109,7 +109,7 @@ function renderCorpo(){
 
     inp.addEventListener('paste', e => {
       e.preventDefault();
-      const colado = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 9);
+      const colado = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 10);
       inp.value = colado;
       inp.dispatchEvent(new Event('input'));
     });

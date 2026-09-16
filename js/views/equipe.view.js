@@ -1,12 +1,12 @@
 /* =========================================================
-   equipe.view.js — gestão de funcionários e direcionamento
+   equipe.view.js — gestão de funcionários
    ========================================================= */
 
 import { state, getMaquina, statusTecnico, usuarioEAdmin } from '../core/state.js';
 import { openModal, closeModal } from '../ui/modal.js';
-import { toast } from '../ui/toast.js';
-import { escapeHtml, fmtMin } from '../core/utils.js';
-import { ESPECIALIDADES } from '../data/constants.js';
+import { toast }                 from '../ui/toast.js';
+import { escapeHtml, fmtMin }    from '../core/utils.js';
+import { CARGOS }                from '../data/constants.js';
 
 import {
   criarTecnico,
@@ -25,7 +25,7 @@ export function renderEquipe(){
   const filtros = state.filtros?.equipe || { status:'', especialidade:'' };
   const todos = (state.db.tecnicos || []);
 
-  /* ---------- Filtro ---------- */
+  /* Filtro */
   const tecnicos = todos.filter(t => {
     if(filtros.status){
       const st = statusTecnico(t.id);
@@ -41,13 +41,10 @@ export function renderEquipe(){
     return true;
   });
 
-  /* ---------- Ordena: quem pode ser direcionado primeiro ---------- */
+  /* Ordena: disponível → atendendo → fora do turno → encerrado */
   const ordem = {
-    atendendo:          0,
-    disponivel:         1,
-    turno_nao_iniciado: 2,
-    turno_encerrado:    3,
-    offline:            4
+    atendendo: 0, disponivel: 1,
+    turno_nao_iniciado: 2, turno_encerrado: 3, offline: 4
   };
   tecnicos.sort((a, b) => {
     const sa = statusTecnico(a.id).status;
@@ -60,7 +57,9 @@ export function renderEquipe(){
   document.getElementById('view').innerHTML = `
     <div class="section-head">
       <h2>Equipe · ${total} ativo${total !== 1 ? 's' : ''}</h2>
-      ${usuarioEAdmin() ? `<button class="action" onclick="abrirNovoTecnico()">+ Novo funcionário</button>` : ''}
+      ${usuarioEAdmin()
+        ? `<button class="action" onclick="abrirNovoTecnico()">+ Novo funcionário</button>`
+        : ''}
     </div>
 
     <div class="filtros-bar">
@@ -74,9 +73,9 @@ export function renderEquipe(){
       </select>
 
       <select class="input-mini" id="fEqEsp">
-        <option value="">Especialidade: todas</option>
-        ${ESPECIALIDADES.map(e =>
-          `<option ${filtros.especialidade===e?'selected':''}>${e}</option>`
+        <option value="">Cargo: todos</option>
+        ${CARGOS.map(c =>
+          `<option ${filtros.especialidade===c?'selected':''}>${escapeHtml(c)}</option>`
         ).join('')}
       </select>
 
@@ -97,15 +96,12 @@ export function renderEquipe(){
     }
   `;
 
-  const selStatus = document.getElementById('fEqStatus');
-  const selEsp    = document.getElementById('fEqEsp');
-
-  selStatus.onchange = e => {
+  document.getElementById('fEqStatus').onchange = e => {
     state.filtros = state.filtros || {};
     state.filtros.equipe = { ...(state.filtros.equipe || {}), status: e.target.value };
     renderEquipe();
   };
-  selEsp.onchange = e => {
+  document.getElementById('fEqEsp').onchange = e => {
     state.filtros = state.filtros || {};
     state.filtros.equipe = { ...(state.filtros.equipe || {}), especialidade: e.target.value };
     renderEquipe();
@@ -113,14 +109,13 @@ export function renderEquipe(){
 }
 
 /* =========================================================
-   CARD DO FUNCIONÁRIO
+   CARD
    ========================================================= */
 function equipeCardHTML(t){
-  const st = statusTecnico(t.id);
+  const st    = statusTecnico(t.id);
   const stats = getEstatisticasTecnico(t.id);
   const inativo = t.ativo === false;
 
-  /* ---------- Mapeia status → cor + label ---------- */
   const mapa = {
     atendendo:          { cor:'sun',   label:'Atendendo',       icone:'🟡' },
     disponivel:         { cor:'green', label:'Disponível',      icone:'🟢' },
@@ -128,17 +123,16 @@ function equipeCardHTML(t){
     turno_nao_iniciado: { cor:'muted', label:'Fora do turno',   icone:'⚪' },
     offline:            { cor:'muted', label:'Offline',         icone:'⚫' }
   };
-
   const s = inativo
     ? { cor:'muted', label:'Inativo', icone:'⚫' }
     : (mapa[st.status] || mapa.offline);
 
   const podeDirecionar = !inativo && st.status === 'disponivel';
   const emAtendimento  = !inativo && st.status === 'atendendo';
-  const tempoDesde = st.desde ? fmtMin(Date.now() - st.desde) : '';
-  const chapa = t.chapa || t.matricula || '—';
+  const tempoDesde     = st.desde ? fmtMin(Date.now() - st.desde) : '';
+  const chapa          = t.chapa || t.matricula || '—';
 
-  /* ---------- Bloco do meio (varia por estado) ---------- */
+  /* Bloco do meio */
   let blocoInfo = '';
   if(emAtendimento){
     blocoInfo = `
@@ -148,34 +142,29 @@ function equipeCardHTML(t){
           <b>${escapeHtml(st.maquina || '—')}</b>
           <span class="eq-assign-time">${tempoDesde}</span>
         </div>
-      </div>
-    `;
+      </div>`;
   } else if(st.status === 'turno_encerrado'){
     blocoInfo = `
       <div class="eq-assign turno-fechado">
         <div class="eq-assign-lbl">${s.icone} ${s.label}</div>
-        <div class="eq-assign-sub">Turno ${escapeHtml(t.turno || '—')} não está ativo no momento.</div>
-      </div>
-    `;
+        <div class="eq-assign-sub">Turno ${escapeHtml(t.turno || '—')} não está ativo.</div>
+      </div>`;
   } else if(st.status === 'turno_nao_iniciado'){
     blocoInfo = `
       <div class="eq-assign turno-fechado">
         <div class="eq-assign-lbl">${s.icone} ${s.label}</div>
         <div class="eq-assign-sub">Turno ${escapeHtml(t.turno || '—')} ainda não começou.</div>
-      </div>
-    `;
+      </div>`;
   } else if(inativo){
     blocoInfo = `
       <div class="eq-assign turno-fechado">
         <div class="eq-assign-sub">Funcionário inativo — sem acesso ao sistema.</div>
-      </div>
-    `;
+      </div>`;
   } else {
     blocoInfo = `
       <div class="eq-assign vazio">
         <span style="color:var(--ink-soft); font-size:12px;">Sem tarefa atribuída</span>
-      </div>
-    `;
+      </div>`;
   }
 
   return `
@@ -190,6 +179,7 @@ function equipeCardHTML(t){
             ${t.turno ? ` · <b>${escapeHtml(t.turno)}</b>` : ''}
             ${t.role === 'admin' ? ' · <b style="color:var(--red)">ADM</b>' : ''}
           </div>
+          ${t.gestor ? `<div class="eq-gestor">👤 Gestor: ${escapeHtml(t.gestor)}</div>` : ''}
         </div>
         <span class="eq-status ${s.cor}">
           <span class="dot ${s.cor}"></span>${s.label}
@@ -207,9 +197,11 @@ function equipeCardHTML(t){
       <div class="eq-actions" onclick="event.stopPropagation()">
         ${podeDirecionar
           ? `<button class="btn sm sun" onclick="abrirDirecionar('${t.id}')">Direcionar</button>`
-          : `<button class="btn sm ghost" disabled title="Funcionário fora do turno ativo" style="opacity:.5; cursor:not-allowed;">Direcionar</button>`
+          : `<button class="btn sm ghost" disabled title="Indisponível" style="opacity:.5;cursor:not-allowed;">Direcionar</button>`
         }
-        ${usuarioEAdmin() ? `<button class="btn sm ghost" onclick="abrirEditarTecnico('${t.id}')">Editar</button>` : ''}
+        ${usuarioEAdmin()
+          ? `<button class="btn sm ghost" onclick="abrirEditarTecnico('${t.id}')">Editar</button>`
+          : ''}
       </div>
     </div>
   `;
@@ -217,12 +209,8 @@ function equipeCardHTML(t){
 
 function iniciais(nome){
   return String(nome || '?')
-    .split(' ')
-    .filter(Boolean)
-    .map(n => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+    .split(' ').filter(Boolean)
+    .map(n => n[0]).slice(0,2).join('').toUpperCase();
 }
 
 /* =========================================================
@@ -232,13 +220,33 @@ export function abrirNovoTecnico(){
   openModal('', '👤', 'Cadastrar funcionário', `
     <div class="field">
       <label>Nome completo *</label>
-      <input id="ntNome" type="text" placeholder="Ex: João da Silva Santos" autocomplete="off" maxlength="80">
+      <input id="ntNome" type="text"
+             placeholder="Ex: João da Silva Santos"
+             autocomplete="off" maxlength="80">
     </div>
 
     <div class="field" style="margin-top:14px;">
       <label>Número da chapa *</label>
-      <input id="ntChapa" type="text" class="chapa-input-modal" inputmode="numeric" maxlength="9" placeholder="000000000" autocomplete="off">
-      <small class="chapa-hint">9 dígitos numéricos</small>
+      <input id="ntChapa" type="text"
+             class="chapa-input-modal"
+             inputmode="numeric" maxlength="10"
+             placeholder="0000000000" autocomplete="off">
+      <small class="chapa-hint">10 dígitos numéricos</small>
+    </div>
+
+    <div class="field" style="margin-top:14px;">
+      <label>Cargo *</label>
+      <select id="ntEspecialidade">
+        <option value="">Selecione…</option>
+        ${CARGOS.map(c => `<option>${escapeHtml(c)}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="field" style="margin-top:14px;">
+      <label>Gestor</label>
+      <input id="ntGestor" type="text"
+             placeholder="Nome do gestor responsável"
+             maxlength="120" autocomplete="off">
     </div>
 
     <div class="row-2" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;">
@@ -246,32 +254,19 @@ export function abrirNovoTecnico(){
         <label>Turno *</label>
         <select id="ntTurno">
           <option value="">Selecione…</option>
-          <option value="1º Turno">1º Turno (06:00 – 14:00)</option>
-          <option value="2º Turno">2º Turno (14:00 – 22:00)</option>
-          <option value="3º Turno">3º Turno (22:00 – 06:00)</option>
+          <option value="1º Turno">1º Turno</option>
+          <option value="2º Turno">2º Turno</option>
+          <option value="3º Turno">3º Turno</option>
         </select>
       </div>
       <div class="field">
-        <label>Especialidade</label>
-        <select id="ntEsp">
-          <option>Multifuncional</option>
-          <option>Mecânica</option>
-          <option>Elétrica</option>
-          <option>Hidráulica</option>
-          <option>Automação</option>
-          <option>Refrigeração</option>
-          <option>Civil</option>
+        <label>Perfil de acesso</label>
+        <select id="ntRole">
+          <option value="tecnico">Técnico</option>
+          <option value="supervisor">Supervisor</option>
+          <option value="admin">Administrador</option>
         </select>
       </div>
-    </div>
-
-    <div class="field" style="margin-top:14px;">
-      <label>Perfil de acesso</label>
-      <select id="ntRole">
-        <option value="tecnico">Técnico</option>
-        <option value="supervisor">Supervisor</option>
-        <option value="admin">Administrador</option>
-      </select>
     </div>
 
     <p id="ntErro" class="form-erro hidden"></p>
@@ -284,15 +279,15 @@ export function abrirNovoTecnico(){
 
   const chapa = document.getElementById('ntChapa');
   chapa.addEventListener('input', () => {
-    chapa.value = chapa.value.replace(/\D/g, '').slice(0, 9);
+    chapa.value = chapa.value.replace(/\D/g, '').slice(0, 10);
     const hint = chapa.parentElement.querySelector('.chapa-hint');
     if(!hint) return;
-    if(chapa.value.length === 9){
+    if(chapa.value.length === 10){
       hint.textContent = '✓ Chapa válida';
       hint.style.color = 'var(--green)';
     } else {
-      hint.textContent = `${chapa.value.length}/9 dígitos`;
-      hint.style.color = 'var(--muted-2)';
+      hint.textContent = `${chapa.value.length}/10 dígitos`;
+      hint.style.color = 'var(--ink-soft)';
     }
   });
 
@@ -307,8 +302,9 @@ export async function confirmarNovoTecnico(){
     const t = await criarTecnico({
       nome:          document.getElementById('ntNome').value,
       chapa:         document.getElementById('ntChapa').value,
+      especialidade: document.getElementById('ntEspecialidade').value,
+      gestor:        document.getElementById('ntGestor').value.trim(),
       turno:         document.getElementById('ntTurno').value,
-      especialidade: document.getElementById('ntEsp').value,
       role:          document.getElementById('ntRole').value
     });
 
@@ -338,8 +334,28 @@ export function abrirEditarTecnico(id){
 
     <div class="field" style="margin-top:14px;">
       <label>Número da chapa</label>
-      <input id="etChapa" type="text" class="chapa-input-modal" inputmode="numeric" maxlength="9" value="${escapeHtml(t.chapa || '')}">
-      <small class="chapa-hint">9 dígitos numéricos</small>
+      <input id="etChapa" type="text"
+             class="chapa-input-modal"
+             inputmode="numeric" maxlength="10"
+             value="${escapeHtml(t.chapa || '')}">
+      <small class="chapa-hint">10 dígitos numéricos</small>
+    </div>
+
+    <div class="field" style="margin-top:14px;">
+      <label>Cargo</label>
+      <select id="etEspecialidade">
+        ${CARGOS.map(c =>
+          `<option ${t.especialidade === c ? 'selected' : ''}>${escapeHtml(c)}</option>`
+        ).join('')}
+      </select>
+    </div>
+
+    <div class="field" style="margin-top:14px;">
+      <label>Gestor</label>
+      <input id="etGestor" type="text"
+             value="${escapeHtml(t.gestor || '')}"
+             placeholder="Nome do gestor responsável"
+             maxlength="120">
     </div>
 
     <div class="row-2" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;">
@@ -352,38 +368,31 @@ export function abrirEditarTecnico(id){
         </select>
       </div>
       <div class="field">
-        <label>Especialidade</label>
-        <select id="etEsp">
-          ${['Multifuncional','Mecânica','Elétrica','Hidráulica','Automação','Refrigeração','Civil'].map(x =>
-            `<option ${t.especialidade === x ? 'selected' : ''}>${x}</option>`
-          ).join('')}
+        <label>Perfil</label>
+        <select id="etRole">
+          <option value="tecnico"    ${t.role==='tecnico'?'selected':''}>Técnico</option>
+          <option value="supervisor" ${t.role==='supervisor'?'selected':''}>Supervisor</option>
+          <option value="admin"      ${t.role==='admin'?'selected':''}>Administrador</option>
         </select>
       </div>
-    </div>
-
-    <div class="field" style="margin-top:14px;">
-      <label>Perfil</label>
-      <select id="etRole">
-        <option value="tecnico"    ${t.role==='tecnico'?'selected':''}>Técnico</option>
-        <option value="supervisor" ${t.role==='supervisor'?'selected':''}>Supervisor</option>
-        <option value="admin"      ${t.role==='admin'?'selected':''}>Administrador</option>
-      </select>
     </div>
 
     <p id="etErro" class="form-erro hidden"></p>
 
     <div style="display:flex; gap:10px; margin-top:18px;">
-      <button class="btn block ghost" style="color:${inativo ? 'var(--green)' : 'var(--red)'};"
+      <button class="btn block ghost"
+              style="color:${inativo ? 'var(--green)' : 'var(--red)'};"
               onclick="confirmarDesativar('${id}')">
         ${inativo ? 'Reativar' : 'Desativar'}
       </button>
-      <button class="btn block primary" onclick="confirmarEditarTecnico('${id}')">Salvar</button>
+      <button class="btn block primary"
+              onclick="confirmarEditarTecnico('${id}')">Salvar</button>
     </div>
   `);
 
   const chapa = document.getElementById('etChapa');
   chapa.addEventListener('input', () => {
-    chapa.value = chapa.value.replace(/\D/g, '').slice(0, 9);
+    chapa.value = chapa.value.replace(/\D/g, '').slice(0, 10);
   });
 }
 
@@ -395,8 +404,9 @@ export function confirmarEditarTecnico(id){
     atualizarTecnico(id, {
       nome:          document.getElementById('etNome').value.trim(),
       chapa:         document.getElementById('etChapa').value,
+      especialidade: document.getElementById('etEspecialidade').value,
+      gestor:        document.getElementById('etGestor').value.trim(),
       turno:         document.getElementById('etTurno').value,
-      especialidade: document.getElementById('etEsp').value,
       role:          document.getElementById('etRole').value
     });
     closeModal();
@@ -427,19 +437,18 @@ export function confirmarDesativar(id){
 }
 
 /* =========================================================
-   DIRECIONAR (multi-técnico + validação de turno)
+   DIRECIONAR (multi-técnico)
    ========================================================= */
 export function abrirDirecionar(tecnicoId = null){
-  /* ⛔ Se veio de um card específico, valida turno dele */
   if(tecnicoId){
     const t = (state.db.tecnicos || []).find(x => x.id === tecnicoId);
     if(!t) return;
     const st = statusTecnico(tecnicoId);
     if(st.status !== 'disponivel'){
       const msgs = {
-        atendendo:          `${t.nome.split(' ')[0]} já está atendendo outra máquina.`,
-        turno_encerrado:    `${t.nome.split(' ')[0]} já encerrou o turno de hoje.`,
-        turno_nao_iniciado: `${t.nome.split(' ')[0]} ainda não iniciou o turno.`,
+        atendendo:          `${t.nome.split(' ')[0]} já está atendendo.`,
+        turno_encerrado:    `${t.nome.split(' ')[0]} já encerrou o turno.`,
+        turno_nao_iniciado: `${t.nome.split(' ')[0]} ainda não iniciou.`,
         offline:            `${t.nome.split(' ')[0]} está offline.`
       };
       toast(msgs[st.status] || 'Funcionário indisponível.', 'amber');
@@ -447,22 +456,17 @@ export function abrirDirecionar(tecnicoId = null){
     }
   }
 
-  /* Só mostra técnicos disponíveis OU o pré-selecionado */
   const todos = (state.db.tecnicos || []).filter(t => t.ativo !== false);
-  const disponiveis = todos.filter(t => {
-    const st = statusTecnico(t.id);
-    return st.status === 'disponivel';
-  });
-
-  const maquinas = state.db.maquinas || [];
-  const paradasAbertas = (state.db.paradas || []).filter(p => p.status === 'aguardando');
-
-  const preMarcados = tecnicoId ? [tecnicoId] : [];
+  const disponiveis = todos.filter(t => statusTecnico(t.id).status === 'disponivel');
+  const maquinas       = state.db.maquinas || [];
+  const paradasAbertas = (state.db.paradas  || []).filter(p => p.status === 'aguardando');
+  const preMarcados    = tecnicoId ? [tecnicoId] : [];
 
   openModal('amarelo', '🎯', 'Direcionar equipe', `
     <div class="field">
       <label>Máquina *</label>
-      <input type="text" id="dirMaquinaBusca" list="dirMaquinas" placeholder="Digite para filtrar…" autocomplete="off">
+      <input type="text" id="dirMaquinaBusca" list="dirMaquinas"
+             placeholder="Digite para filtrar…" autocomplete="off">
       <datalist id="dirMaquinas">
         ${maquinas.map(m =>
           `<option data-id="${m.id}" value="${m.nome} (${m.setor}${m.area?' · '+m.area:''})">`
@@ -473,7 +477,7 @@ export function abrirDirecionar(tecnicoId = null){
     <div class="field" style="margin-top:12px;">
       <label>Parada aberta (opcional)</label>
       <select id="dirParada">
-        <option value="">— Sem parada vinculada (apenas registro de OS) —</option>
+        <option value="">— Sem parada vinculada —</option>
         ${paradasAbertas.map(p =>
           `<option value="${p.id}">#${p.numero} · ${p.maquinaNome || p.setor}</option>`
         ).join('')}
@@ -481,15 +485,15 @@ export function abrirDirecionar(tecnicoId = null){
     </div>
 
     <div class="field" style="margin-top:12px;">
-      <label>Técnicos * <small style="color:var(--muted); font-weight:500;">(1 ou mais — forma um time)</small></label>
+      <label>Técnicos * <small style="color:var(--ink-soft);font-weight:500;">(1 ou mais)</small></label>
       ${disponiveis.length === 0
-        ? `<div class="empty" style="padding:14px; font-size:12px;">Nenhum técnico disponível no turno atual.</div>`
+        ? `<div class="empty" style="padding:14px;font-size:12px;">Nenhum técnico disponível.</div>`
         : `<div class="dir-tecnicos">
              ${disponiveis.map(t => `
                <label class="dir-tec">
                  <input type="checkbox" value="${t.id}" ${preMarcados.includes(t.id) ? 'checked' : ''}>
-                 <span>${t.nome.split(' ')[0]}</span>
-                 <small>${t.especialidade || 'Geral'} · ${t.turno || '—'}</small>
+                 <span>${escapeHtml(t.nome.split(' ')[0])}</span>
+                 <small>${escapeHtml(t.especialidade || 'Geral')} · ${escapeHtml(t.turno || '—')}</small>
                </label>
              `).join('')}
            </div>`
@@ -498,14 +502,15 @@ export function abrirDirecionar(tecnicoId = null){
 
     <div class="field" style="margin-top:12px;">
       <label>Observação (opcional)</label>
-      <textarea id="dirObs" placeholder="Ex: levar chave 17, verificar pressão…" rows="2" style="width:100%; resize:vertical;"></textarea>
+      <textarea id="dirObs" rows="2" style="width:100%;resize:vertical;"
+                placeholder="Ex: levar chave 17…"></textarea>
     </div>
 
     <p id="dirErro" class="form-erro hidden"></p>
 
     <div style="display:flex; gap:10px; margin-top:16px;">
       <button type="button" class="btn block ghost" onclick="closeModal()">Cancelar</button>
-      <button type="button" class="btn block sun" onclick="confirmarDirecionar()">Enviar direcionamento</button>
+      <button type="button" class="btn block sun" onclick="confirmarDirecionar()">Enviar</button>
     </div>
   `);
 
@@ -517,7 +522,6 @@ export async function confirmarDirecionar(){
   erro.classList.add('hidden');
 
   try {
-    /* Resolve máquina pelo texto do datalist */
     const busca = document.getElementById('dirMaquinaBusca');
     const nomeBusca = busca.value.trim();
     const lista = document.getElementById('dirMaquinas').options;
@@ -525,19 +529,19 @@ export async function confirmarDirecionar(){
     for(const opt of lista){
       if(opt.value === nomeBusca){ maquinaId = opt.dataset.id; break; }
     }
-    if(!maquinaId) throw new Error('Selecione uma máquina válida da lista.');
+    if(!maquinaId) throw new Error('Selecione uma máquina válida.');
 
-    /* Técnicos selecionados */
-    const tecnicoIds = [...document.querySelectorAll('.dir-tec input:checked')].map(x => x.value);
+    const tecnicoIds = [...document.querySelectorAll('.dir-tec input:checked')]
+      .map(x => x.value);
     if(tecnicoIds.length === 0) throw new Error('Selecione pelo menos um técnico.');
 
-    const paradaId = document.getElementById('dirParada').value || null;
+    const paradaId   = document.getElementById('dirParada').value || null;
     const observacao = document.getElementById('dirObs').value.trim();
 
     await direcionarTecnicos({ maquinaId, tecnicoIds, paradaId, observacao });
 
     closeModal();
-    toast(`Direcionamento enviado · ${tecnicoIds.length} técnico(s) notificado(s)`, 'green');
+    toast(`Direcionamento enviado · ${tecnicoIds.length} técnico(s)`, 'green');
     window.__render?.();
   } catch(err){
     erro.textContent = err.message;

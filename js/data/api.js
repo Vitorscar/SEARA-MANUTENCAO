@@ -59,9 +59,11 @@ function mapUsuario(u){
     matricula:     u.chapa,
     turno:         u.turno,
     especialidade: u.especialidade,
+    gestor:        u.gestor || '',
     role:          u.role,
     ativo:         u.ativo
   };
+
 }
 
 function mapMaquina(m){
@@ -232,18 +234,19 @@ const usuariosApi = {
     return mapUsuario(data);
   },
 
-  async cadastrar({ nome, chapa, turno, especialidade, role }){
-    const { data, error } = await supabase.rpc('cadastrar_funcionario', {
-      p_nome:          nome,
-      p_chapa:         chapa,
-      p_turno:         turno,
-      p_especialidade: especialidade || 'Multifuncional',
-      p_role:          role || 'tecnico'
-    });
-    if(error) throw new Error(error.message);
-    if(!data?.ok) throw new Error(data?.msg || 'Erro ao cadastrar');
-    return data.funcionario;
-  }
+  async cadastrar({ nome, chapa, turno, especialidade, role, gestor }){
+  const { data, error } = await supabase.rpc('cadastrar_funcionario', {
+    p_nome:          nome,
+    p_chapa:         chapa,
+    p_turno:         turno,
+    p_especialidade: especialidade || 'Multifuncional',
+    p_role:          role || 'tecnico',
+    p_gestor:        gestor || null
+  });
+  if(error) throw new Error(error.message);
+  if(!data?.ok) throw new Error(data?.msg || 'Erro ao cadastrar');
+  return data.funcionario;
+}
 };
 
 /* =========================================================

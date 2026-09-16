@@ -153,14 +153,13 @@
   cursor:pointer; font-size:13px;
 }
 /* ---------- Chapa (modal) ---------- */
-.chapa-input-modal{
+.chapa-input-modal {
   font-family: var(--mono) !important;
-  font-size: 18px !important;
-  letter-spacing: .15em !important;
+  font-size: 16px !important;
+  letter-spacing: 4px !important;
   text-align: center !important;
   font-weight: 700;
 }
-
 /* ---------- Erro de formulário ---------- */
 .form-erro{
   margin-top: 12px;

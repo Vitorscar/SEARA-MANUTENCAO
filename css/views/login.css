@@ -45,15 +45,19 @@
   border-top:1px solid var(--border);
 }
 /* ---------- Campo da chapa ---------- */
-.chapa-input{
+
+.chapa-input {
   font-family: var(--mono) !important;
-  font-size: 22px !important;
-  letter-spacing: .22em !important;
-  text-align: center !important;
-  padding: 18px 14px !important;
+  font-size: 1.6rem !important;      /* menor pq agora tem 10 dígitos */
   font-weight: 800;
-  transition: border-color .12s, box-shadow .12s, color .12s;
+  text-align: center !important;
+  letter-spacing: 5px !important;    /* reduzido de 8px */
+  padding-left: calc(var(--sp-4) + 6px) !important;
+  font-variant-numeric: tabular-nums;
+  min-height: 76px !important;
+  color: var(--navy) !important;
 }
+
 .chapa-input.ok{
   border-color: var(--green) !important;
   box-shadow: 0 0 0 3px rgba(30,122,61,.12) !important;
