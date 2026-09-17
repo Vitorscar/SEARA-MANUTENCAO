@@ -1,13 +1,16 @@
 /* =========================================================
-   registro.view.js — formulário completo
-   Seções: Identificação · Tipo de Falha · Componente · Ação · Anexos · Fechamento
+   registro.view.js — formulário completo de parada
+   Seções: Identificação · Tipo de Falha · Componente · Ação
+           Anexos · Fechamento
+   Anexos vão pro Supabase Storage (não mais base64)
    ========================================================= */
 
-import { state, salvarDB, novoDraft, getMaquina } from '../core/state.js';
+import { state, novoDraft, getMaquina } from '../core/state.js';
 import { navigate }                    from '../core/router.js';
 import { toast }                       from '../ui/toast.js';
 import { escapeHtml, turnoAtual }      from '../core/utils.js';
 import { toggleDitado }                from '../services/voz.service.js';
+import { api }                         from '../data/api.js';
 
 import {
   TURNOS, IMPACTOS, TIPOS_FALHA, CAUSAS_RAIZ,
@@ -17,15 +20,13 @@ import {
 import { criarParada, atualizarParada } from '../services/paradas.service.js';
 
 import {
-  processarFoto,
-  processarVideo,
   iniciarGravacao,
   pararGravacao,
   estaGravando,
-  removerAnexo,
-  pesoAnexos,
-  formatarPeso,
-  base64ParaUrl
+  uploadFoto,
+  uploadVideo,
+  uploadAudio,
+  formatarPeso
 } from '../services/anexos.service.js';
 
 /* =========================================================
@@ -38,25 +39,32 @@ export function renderRegistro(){
     ? (state.db.paradas || []).find(p => p.id === state.draft.paradaEditando)
     : null;
 
-  /* Garante draft de anexos */
+  /* Garante draft limpo */
   state.draft = state.draft || novoDraft();
-  state.draft.anexos = state.draft.anexos || [];
+  state.draft.anexosPendentes = state.draft.anexosPendentes || [];
 
-  /* Máquinas agrupadas por setor */
+  /* ---------- Máquinas agrupadas por setor ---------- */
   const porSetor = {};
   (state.db.maquinas || []).forEach(m => {
     const s = m.setor || 'Sem setor';
     (porSetor[s] = porSetor[s] || []).push(m);
   });
+
+  /* ⚡ FIX 1: option com data-setor e data-area */
   const maquinasOptions = Object.keys(porSetor).sort().map(setor => {
     const opts = porSetor[setor]
       .sort((a,b) => (a.nome || '').localeCompare(b.nome || ''))
-      .map(m => `<option value="${m.id}" ${paradaEditando?.maquinaId === m.id ? 'selected' : ''}>${escapeHtml(m.nome)}</option>`)
+      .map(m => `<option value="${m.id}"
+                        data-setor="${escapeHtml(m.setor || '')}"
+                        data-area="${escapeHtml(m.area || '')}"
+                        ${paradaEditando?.maquinaId === m.id ? 'selected' : ''}>
+                   ${escapeHtml(m.nome)}
+                 </option>`)
       .join('');
     return `<optgroup label="${escapeHtml(setor)}">${opts}</optgroup>`;
   }).join('');
 
-  /* Valores iniciais */
+  /* ---------- Valores iniciais ---------- */
   const dataHoje      = new Date().toISOString().slice(0, 10);
   const chapaIni      = paradaEditando?.chapaTecnico || user?.chapa || '';
   const turnoIni      = paradaEditando?.turno || user?.turno || turnoAtual();
@@ -113,7 +121,8 @@ export function renderRegistro(){
             <div class="reg-field">
               <label>Chapa do técnico <span class="req">*</span></label>
               <input type="text" id="regChapa" value="${escapeHtml(chapaIni)}"
-                     inputmode="numeric" maxlength="9" placeholder="000000000" required>
+                     inputmode="numeric" maxlength="10" placeholder="0000000000" required>
+              <small class="reg-hint">10 dígitos numéricos</small>
             </div>
 
             <div class="reg-field">
@@ -257,7 +266,7 @@ export function renderRegistro(){
 
             <div id="regAudioStatus" class="audio-status hidden">
               <span class="audio-rec-dot"></span>
-              <span>Gravando… <b id="regAudioTimer">0s</b> / 45s</span>
+              <span>Gravando… <b id="regAudioTimer">0s</b> / 60s</span>
               <button type="button" class="audio-stop"
                       onclick="toggleAudioRegistro()">Parar</button>
             </div>
@@ -308,12 +317,11 @@ export function renderRegistro(){
     </div>
   `;
 
-  /* Renderiza anexos já gravados (se houver) */
   renderAnexosLista();
 }
 
 /* =========================================================
-   CHIPS — AÇÃO
+   CHIPS
    ========================================================= */
 export function selecionarChipAcao(btn){
   document.querySelectorAll('#regAcaoCompGrid .reg-chip')
@@ -333,6 +341,9 @@ export function selecionarChipPreventiva(btn){
    CANCELAR
    ========================================================= */
 export function cancelarRegistro(){
+  (state.draft.anexosPendentes || []).forEach(a => {
+    if(a.preview) try { URL.revokeObjectURL(a.preview); } catch(_){}
+  });
   state.draft = novoDraft();
   navigate('radar');
 }
@@ -345,8 +356,17 @@ export async function onFotoRegistro(event){
   if(!file) return;
 
   try {
-    const anexo = await processarFoto(file);
-    state.draft.anexos = [...(state.draft.anexos || []), anexo];
+    const preview = URL.createObjectURL(file);
+
+    state.draft.anexosPendentes = state.draft.anexosPendentes || [];
+    state.draft.anexosPendentes.push({
+      tipo:     'foto',
+      blob:     file,
+      preview,
+      nome:     file.name,
+      tamanho:  file.size
+    });
+
     event.target.value = '';
     renderAnexosLista();
     toast('Foto anexada', 'success');
@@ -363,9 +383,24 @@ export async function onVideoRegistro(event){
   const file = event.target.files?.[0];
   if(!file) return;
 
+  if(file.size > 20 * 1024 * 1024){
+    toast('Vídeo muito grande (máx 20 MB)', 'error');
+    event.target.value = '';
+    return;
+  }
+
   try {
-    const anexo = await processarVideo(file);
-    state.draft.anexos = [...(state.draft.anexos || []), anexo];
+    const preview = URL.createObjectURL(file);
+
+    state.draft.anexosPendentes = state.draft.anexosPendentes || [];
+    state.draft.anexosPendentes.push({
+      tipo:    'video',
+      blob:    file,
+      preview,
+      nome:    file.name,
+      tamanho: file.size
+    });
+
     event.target.value = '';
     renderAnexosLista();
     toast('Vídeo anexado', 'success');
@@ -395,13 +430,23 @@ export async function toggleAudioRegistro(){
         const el = document.getElementById('regAudioTimer');
         if(el) el.textContent = s + 's';
       },
-      onEnd: (anexo, dur) => {
+      onEnd: (blob, dur) => {
         status.classList.add('hidden');
         ic.textContent  = '🎤';
         lbl.textContent = 'Áudio';
 
-        if(anexo){
-          state.draft.anexos = [...(state.draft.anexos || []), anexo];
+        if(blob && blob.size > 0){
+          const preview = URL.createObjectURL(blob);
+
+          state.draft.anexosPendentes = state.draft.anexosPendentes || [];
+          state.draft.anexosPendentes.push({
+            tipo:     'audio',
+            blob,
+            preview,
+            duracao:  dur,
+            tamanho:  blob.size
+          });
+
           renderAnexosLista();
           toast(`Áudio gravado (${dur}s)`, 'success');
         }
@@ -416,10 +461,14 @@ export async function toggleAudioRegistro(){
 }
 
 /* =========================================================
-   ANEXOS — LISTA
+   ANEXOS — LISTA / PREVIEW
    ========================================================= */
-export function removerAnexoRegistro(ts){
-  state.draft.anexos = removerAnexo(state.draft.anexos, ts);
+export function removerAnexoRegistro(idx){
+  const lista = state.draft.anexosPendentes || [];
+  const item = lista[idx];
+  if(item?.preview) try { URL.revokeObjectURL(item.preview); } catch(_){}
+
+  lista.splice(idx, 1);
   renderAnexosLista();
 }
 
@@ -428,7 +477,7 @@ function renderAnexosLista(){
   const peso = document.getElementById('regPesoAnexos');
   if(!cont) return;
 
-  const anexos = state.draft.anexos || [];
+  const anexos = state.draft.anexosPendentes || [];
 
   if(anexos.length === 0){
     cont.innerHTML = '';
@@ -436,31 +485,30 @@ function renderAnexosLista(){
     return;
   }
 
-  cont.innerHTML = anexos.map(a => {
+  cont.innerHTML = anexos.map((a, idx) => {
     if(a.tipo === 'foto'){
       return `
         <div class="anexo-item">
-          <img src="${base64ParaUrl(a.data, a.mime)}" alt="" class="anexo-thumb">
+          <img src="${a.preview}" alt="" class="anexo-thumb">
           <div class="anexo-info">
             <span class="anexo-tag">📷 Foto</span>
             <span class="anexo-size">${formatarPeso(a.tamanho)}</span>
           </div>
           <button type="button" class="anexo-x"
-                  onclick="removerAnexoRegistro(${a.ts})">✕</button>
+                  onclick="removerAnexoRegistro(${idx})">✕</button>
         </div>
       `;
     }
     if(a.tipo === 'video'){
       return `
         <div class="anexo-item">
-          <video src="${base64ParaUrl(a.data, a.mime)}"
-                 class="anexo-thumb" muted></video>
+          <video src="${a.preview}" class="anexo-thumb" muted></video>
           <div class="anexo-info">
             <span class="anexo-tag">🎥 Vídeo</span>
             <span class="anexo-size">${formatarPeso(a.tamanho)}</span>
           </div>
           <button type="button" class="anexo-x"
-                  onclick="removerAnexoRegistro(${a.ts})">✕</button>
+                  onclick="removerAnexoRegistro(${idx})">✕</button>
         </div>
       `;
     }
@@ -470,11 +518,11 @@ function renderAnexosLista(){
           <div class="anexo-audio-ic">🎤</div>
           <div class="anexo-info">
             <span class="anexo-tag">Áudio · ${a.duracao || 0}s</span>
-            <audio controls src="${base64ParaUrl(a.data, a.mime)}"
+            <audio controls src="${a.preview}"
                    style="height:28px;margin-top:3px;width:100%;"></audio>
           </div>
           <button type="button" class="anexo-x"
-                  onclick="removerAnexoRegistro(${a.ts})">✕</button>
+                  onclick="removerAnexoRegistro(${idx})">✕</button>
         </div>
       `;
     }
@@ -482,7 +530,7 @@ function renderAnexosLista(){
   }).join('');
 
   if(peso){
-    const total = pesoAnexos(anexos);
+    const total = anexos.reduce((s,a) => s + (a.tamanho || 0), 0);
     peso.textContent = `Total: ${formatarPeso(total)} em ${anexos.length} anexo(s)`;
     peso.classList.remove('hidden');
   }
@@ -497,10 +545,17 @@ export async function salvarRegistro(){
   const erro = document.getElementById('regErro');
   erro.classList.add('hidden');
 
-  /* Coleta */
+  /* ---------- Coleta ---------- */
   const data        = document.getElementById('regData').value;
   const chapa       = document.getElementById('regChapa').value.replace(/\D/g, '');
-  const maquinaId   = document.getElementById('regMaquina').value;
+
+  /* ⚡ FIX 2: captura setor/area do option selecionado */
+  const selMaq   = document.getElementById('regMaquina');
+  const maquinaId = selMaq.value;
+  const optMaq   = selMaq.options[selMaq.selectedIndex];
+  const setorMaq = optMaq?.dataset.setor || '';
+  const areaMaq  = optMaq?.dataset.area  || '';
+
   const turno       = document.getElementById('regTurno').value;
   const impacto     = document.getElementById('regImpacto').value;
   const categoria   = document.getElementById('regTipoFalha').value;
@@ -510,47 +565,102 @@ export async function salvarRegistro(){
   const acaoPrev    = document.getElementById('regAcaoPreventiva').value;
   const responsavel = document.getElementById('regResponsavel').value.trim();
   const obs         = document.getElementById('regObs').value.trim();
-  const anexos      = state.draft.anexos || [];
+  const anexos      = state.draft.anexosPendentes || [];
 
-  /* Validações */
-  if(chapa.length !== 9)   return mostrarErro(erro, 'Chapa deve ter 9 dígitos.');
-  if(!maquinaId)           return mostrarErro(erro, 'Selecione a máquina.');
-  if(!categoria)           return mostrarErro(erro, 'Escolha o Tipo de Falha.');
-  if(!causaRaiz)           return mostrarErro(erro, 'Escolha a Causa Raiz.');
-  if(!componente)          return mostrarErro(erro, 'Informe o componente.');
-  if(!acaoComp)            return mostrarErro(erro, 'Escolha a ação no componente.');
-  if(!responsavel)         return mostrarErro(erro, 'Informe o responsável.');
+  /* ---------- Validações ---------- */
+  if(chapa.length !== 10) return mostrarErro(erro, 'Chapa deve ter 10 dígitos.');
+  if(!maquinaId)          return mostrarErro(erro, 'Selecione a máquina.');
+  if(!categoria)          return mostrarErro(erro, 'Escolha o Tipo de Falha.');
+  if(!causaRaiz)          return mostrarErro(erro, 'Escolha a Causa Raiz.');
+  if(!componente)         return mostrarErro(erro, 'Informe o componente.');
+  if(!acaoComp)           return mostrarErro(erro, 'Escolha a ação no componente.');
+  if(!responsavel)        return mostrarErro(erro, 'Informe o responsável.');
+
+  /* Chapa existe? */
+  const func = (state.db.tecnicos || []).find(t => t.chapa === chapa);
+  if(!func && chapa !== state.db.currentUser?.chapa){
+    try {
+      const f = await api.usuarios.buscarPorChapa(chapa);
+      if(!f) return mostrarErro(erro, 'Chapa não cadastrada.');
+    } catch(_) {
+      return mostrarErro(erro, 'Chapa não encontrada.');
+    }
+  }
 
   btn.disabled = true;
-  btn.textContent = 'Salvando…';
+  btn.textContent = 'Salvando parada…';
 
   try {
+    let parada;
+
+    /* ═══════════════════════════════════════════
+       ENCERRAR
+       ═══════════════════════════════════════════ */
     if(modo === 'encerrar' && state.draft.paradaEditando){
-      await atualizarParada(state.draft.paradaEditando, {
+      parada = await atualizarParada(state.draft.paradaEditando, {
         data, chapa, turno, impacto, categoria,
         causaRaiz, componente,
-        acaoComponente: acaoComp, acaoPreventiva: acaoPrev,
+        acaoComponente: acaoComp,
+        acaoPreventiva: acaoPrev,
         responsavel, observacao: obs,
-        anexos
+        setor: setorMaq,   // ⚡ FIX 3 — mantém consistente
+        area:  areaMaq
       }, { encerrar: true });
+    }
 
-      toast('Parada encerrada', 'success');
-    } else {
-      const parada = await criarParada({
+    /* ═══════════════════════════════════════════
+       NOVA PARADA
+       ═══════════════════════════════════════════ */
+    else {
+      parada = await criarParada({
         data, chapa, maquinaId, turno, impacto,
         categoria, causaRaiz, componente,
-        acaoComponente: acaoComp, acaoPreventiva: acaoPrev,
+        acaoComponente: acaoComp,
+        acaoPreventiva: acaoPrev,
         responsavel, observacao: obs,
-        anexos
+        setor: setorMaq,   // ⚡ FIX 3
+        area:  areaMaq     // ⚡ FIX 3
       });
-
-      toast(`Parada #${parada.numero} registrada`, 'success');
     }
+
+    /* ═══════════════════════════════════════════
+       UPLOAD DOS ANEXOS
+       ═══════════════════════════════════════════ */
+    if(anexos.length > 0 && parada?.id){
+      let enviados = 0;
+      btn.textContent = `Enviando anexos (0/${anexos.length})…`;
+
+      for(const a of anexos){
+        try {
+          if(a.tipo === 'foto')  await uploadFoto(parada.id, a.blob);
+          if(a.tipo === 'video') await uploadVideo(parada.id, a.blob);
+          if(a.tipo === 'audio') await uploadAudio(parada.id, a.blob, a.duracao);
+          enviados++;
+        } catch(err){
+          console.warn('[registro] falha no anexo:', err.message);
+          toast(`Anexo ${enviados + 1} falhou: ${err.message}`, 'amber');
+        }
+        btn.textContent = `Enviando anexos (${enviados}/${anexos.length})…`;
+      }
+    }
+
+    /* Limpa previews */
+    (state.draft.anexosPendentes || []).forEach(a => {
+      if(a.preview) try { URL.revokeObjectURL(a.preview); } catch(_){}
+    });
+
+    toast(
+      modo === 'encerrar'
+        ? 'Parada encerrada com sucesso'
+        : `Parada #${parada.numero} registrada`,
+      'success'
+    );
 
     state.draft = novoDraft();
     navigate('radar');
 
   } catch(err){
+    console.error('[registro] erro ao salvar:', err);
     mostrarErro(erro, err.message || 'Erro ao salvar.');
     btn.disabled = false;
     btn.textContent = modo === 'encerrar'
@@ -563,20 +673,3 @@ function mostrarErro(el, msg){
   el.textContent = msg;
   el.classList.remove('hidden');
 }
-
-/* =========================================================
-   EXPOSIÇÃO GLOBAL — para os onclick/onchange inline do HTML
-   ⚡ ESSENCIAL: sem isto, os handlers inline não funcionam
-   ========================================================= */
-Object.assign(window, {
-  renderRegistro,
-  salvarRegistro,
-  cancelarRegistro,
-  selecionarChipAcao,
-  selecionarChipPreventiva,
-  onFotoRegistro,
-  onVideoRegistro,
-  toggleAudioRegistro,
-  removerAnexoRegistro,
-  toggleDitado
-});

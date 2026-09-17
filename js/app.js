@@ -1,10 +1,10 @@
 /* =========================================================
    app.js — boot + wiring
-   Login primeiro, resto carregado sob demanda (lazy)
-   Auto-expose: todo export das views vai pro window
+   Ordem: imports → helpers → guards → rotas → boot
+   Login é essencial; o resto é lazy com auto-expose
    ========================================================= */
 
-/* ---------- Essencial (top-level, nunca quebra) ---------- */
+/* ---------- Core ---------- */
 import { initState, state, salvarDB }              from './core/state.js';
 import { registerRoute, initRouter, navigate, render } from './core/router.js';
 import { on }                                       from './core/events.js';
@@ -13,24 +13,34 @@ import { estaLogado, logout }                       from './services/auth.servic
 import { toast }                                    from './ui/toast.js';
 import { closeModal }                               from './ui/modal.js';
 
-/* ---------- Login: import direto (essencial) ---------- */
+/* ---------- Detalhe de parada (usado em relatórios/extrato) ---------- */
+import {
+  abrirDetalheParada,
+  abrirDetalheParadaPorId,
+  abrirZoom,
+  exportarParada
+} from './ui/parada-detail.js';
+
+/* ---------- Login: import direto (essencial, sempre carregado) ---------- */
 import * as loginView from './views/login.view.js';
 
 /* =========================================================
-   CONFIGURAÇÕES
+   1) CONFIGURAÇÕES
    ========================================================= */
 const SCHEMA_VERSION = 'v6';
 
 /* =========================================================
-   GUARDS
+   2) GUARDS
    ========================================================= */
 const isLoggedIn = () => !!state.db?.currentUser || estaLogado();
 const isAdmin    = () => (state.db?.currentUser || {}).role === 'admin';
 
 /* =========================================================
-   WRAPPER — transforma função de view em controller
-   + seta a classe do body pra esconder shell no login
+   3) HELPERS
    ========================================================= */
+
+/* Wrapper — transforma função de view em controller
+   + seta a classe do body pra esconder shell no login */
 function wrapView(fn, routePath){
   return {
     async mount(_root, params){
@@ -41,10 +51,8 @@ function wrapView(fn, routePath){
   };
 }
 
-/* =========================================================
-   AUTO-EXPOSE — joga todos os exports de um módulo em window
-   Assim os onclick/onsubmit inline do HTML encontram as funções
-   ========================================================= */
+/* Auto-expose — joga todos os exports de um módulo em window
+   Assim os onclick/onsubmit inline do HTML encontram as funções */
 function autoExpose(modulo, opts = {}){
   const { ignore = [] } = opts;
   let count = 0;
@@ -61,27 +69,27 @@ function autoExpose(modulo, opts = {}){
 }
 
 /* =========================================================
-   ROTAS ESSENCIAIS
+   4) ROTAS ESSENCIAIS (carregadas imediatamente)
    ========================================================= */
 registerRoute('login', {
   controller: wrapView(loginView.renderLogin, 'login')
 });
 
-/* Expor exports do login direto */
+/* Expor exports do login direto (ex: submit handlers) */
 autoExpose(loginView);
 
 /* =========================================================
-   ROTAS SOB DEMANDA (lazy)
-   Cada view = { path, módulo, export da função de render, guard }
+   5) ROTAS LAZY (carregadas sob demanda)
    ========================================================= */
 const LAZY_ROUTES = [
-  { path: 'radar',      modulo: './views/radar.view.js',      render: 'renderRadar',      guard: isLoggedIn },
-  { path: 'registro',   modulo: './views/registro.view.js',   render: 'renderRegistro',   guard: isLoggedIn },
+  { path: 'relatorios', modulo: './views/relatorios.view.js', render: 'renderRelatorios', guard: isLoggedIn },
+  { path: 'extrato',    modulo: './views/extrato.view.js',    render: 'renderExtrato',    guard: isLoggedIn },
   { path: 'maquinas',   modulo: './views/maquinas.view.js',   render: 'renderMaquinas',   guard: isLoggedIn },
-  { path: 'os',         modulo: './views/os.view.js',         render: 'renderOS',         guard: isLoggedIn },
   { path: 'equipe',     modulo: './views/equipe.view.js',     render: 'renderEquipe',     guard: isAdmin    },
-  { path: 'tecnico',    modulo: './views/tecnico.view.js',    render: 'renderTecnico',    guard: isAdmin    },
-  { path: 'relatorios', modulo: './views/relatorios.view.js', render: 'renderRelatorios', guard: isLoggedIn }
+  { path: 'registro',   modulo: './views/registro.view.js',   render: 'renderRegistro',   guard: isLoggedIn },
+  { path: 'radar',      modulo: './views/radar.view.js',      render: 'renderRadar',      guard: isLoggedIn },
+  { path: 'os',         modulo: './views/os.view.js',         render: 'renderOS',         guard: isLoggedIn },
+  { path: 'tecnico',    modulo: './views/tecnico.view.js',    render: 'renderTecnico',    guard: isAdmin    }
 ];
 
 async function registrarRotasLazy(){
@@ -89,10 +97,10 @@ async function registrarRotasLazy(){
     try {
       const m = await import(item.modulo);
 
-      /* ⚡ expõe tudo (salvarRegistro, onFoto, chips, etc) */
+      /* ⚡ expõe todos os exports (salvarRegistro, onFoto, chips, etc) */
       autoExpose(m);
 
-      /* Registra a rota com o controller */
+      /* Registra a rota */
       const fn = m[item.render];
       if(typeof fn !== 'function'){
         console.warn(`[app] "${item.modulo}" não exporta "${item.render}"`);
@@ -111,7 +119,7 @@ async function registrarRotasLazy(){
 }
 
 /* =========================================================
-   WIRING GLOBAL
+   6) WIRING GLOBAL
    ========================================================= */
 
 /* ---------- Rede ---------- */
@@ -214,39 +222,44 @@ function montarTopbarUsuario(){
 }
 
 /* =========================================================
-   EVENTOS
+   7) EVENTOS
    ========================================================= */
 on('undo:aplicado', () => { render(); });
 
 /* =========================================================
-   EXPOSIÇÃO GLOBAL — helpers do próprio app
-   (as views se auto-expõem via autoExpose)
+   8) EXPOSIÇÃO GLOBAL (helpers do próprio app)
    ========================================================= */
 Object.assign(window, {
-  /* Core */
+  /* ── Core ── */
   navigate,
   logout,
   render,
   __render: render,
 
-  /* UI */
+  /* ── UI ── */
   closeModal,
   toast,
 
-  /* Utils */
+  /* ── Utils ── */
   turnoAtual,
   nowStr,
   __utils: { turnoAtual, nowStr },
 
-  /* Navegação específica */
+  /* ── Detalhe de parada (usado pelo relatório / extrato) ── */
+  abrirDetalheParada,
+  abrirDetalheParadaPorId,
+  abrirZoom,
+  exportarParada,
+
+  /* ── Navegação específica ── */
   tecnicoVoltar: () => navigate('equipe')
 });
 
 /* =========================================================
-   BOOT
+   9) BOOT
    ========================================================= */
 async function boot(){
-  /* 1) Reset de cache se schema mudou */
+  /* Reset de cache se schema mudou */
   if(localStorage.getItem('schema_version') !== SCHEMA_VERSION){
     console.log('[boot] schema novo — limpando cache');
     ['seara_cache', 'seara_cache_v2', 'seara_sessao_v1',
@@ -256,7 +269,7 @@ async function boot(){
     localStorage.setItem('schema_version', SCHEMA_VERSION);
   }
 
-  /* 2) Init state (com fallback garantido) */
+  /* Init state (com fallback garantido) */
   try {
     await initState();
   } catch(err){
@@ -270,17 +283,17 @@ async function boot(){
     }
   }
 
-  /* 3) Wiring de UI (independente do login) */
+  /* Wiring de UI (independente do login) */
   setupNetwork();
   setupKeyboard();
   setupNavigation();
   setupBeforeUnload();
   startClock();
 
-  /* 4) Registra rotas lazy + auto-expose */
+  /* Registra rotas lazy + auto-expose */
   await registrarRotasLazy();
 
-  /* 5) Rota inicial */
+  /* Rota inicial */
   const logado = estaLogado() || !!state.db?.currentUser;
 
   if(!logado){
@@ -290,8 +303,17 @@ async function boot(){
   }
 
   montarTopbarUsuario();
-  console.log(`[boot] logado como ${state.db.currentUser?.role} → radar`);
-  initRouter('radar');
+
+  const role = state.db?.currentUser?.role;
+
+  /* Admin → relatórios · Funcionário → registro */
+  if(role === 'admin'){
+    console.log('[boot] logado como admin → relatorios');
+    initRouter('relatorios');
+  } else {
+    console.log('[boot] logado como técnico → registro');
+    initRouter('registro');
+  }
 }
 
 boot();

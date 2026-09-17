@@ -1,128 +1,198 @@
 /* =========================================================
-   anexos.service.js — foto, áudio e vídeo
-   Armazena em base64 (localStorage). Cuidado com quota!
+   anexos.service.js — upload para Supabase Storage
    ========================================================= */
 
-const LIMITE_FOTO_W    = 900;   // px
-const LIMITE_FOTO_Q    = 0.72;  // jpeg
-const LIMITE_AUDIO_S   = 45;    // segundos
-const LIMITE_VIDEO_S   = 15;    // segundos
-const LIMITE_VIDEO_W   = 640;   // px
+import { supabase } from '../data/supabase-client.js';
 
-/* ---------- util ---------- */
-export function blobToBase64(blob){
-  return new Promise((res, rej) => {
-    const reader = new FileReader();
-    reader.onloadend = () => res(reader.result.split(',')[1]);
-    reader.onerror = rej;
-    reader.readAsDataURL(blob);
-  });
+const BUCKET = 'anexos';
+
+/* Limites */
+const LIMITE_FOTO_KB   = 500;
+const LIMITE_VIDEO_MB  = 20;
+const LIMITE_AUDIO_S   = 60;
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+async function blobParaArquivo(blob, ext, mime){
+  const nome = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  return new File([blob], nome, { type: mime });
 }
 
-export function base64ParaUrl(b64, mime){
-  return `data:${mime};base64,${b64}`;
-}
-
-/* ---------- FOTO: resize + compressão ---------- */
-export async function processarFoto(file){
-  if(!file) return null;
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(1, LIMITE_FOTO_W / bitmap.width);
-  canvas.width  = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', LIMITE_FOTO_Q);
-  bitmap.close?.();
-  return {
-    tipo: 'foto',
-    mime: 'image/jpeg',
-    data: dataUrl.split(',')[1],
-    ts: Date.now(),
-    tamanho: Math.round((dataUrl.length * 3) / 4)
+function detectarExt(mime, tipo){
+  const mapa = {
+    'image/jpeg': 'jpg',
+    'image/png':  'png',
+    'image/webp': 'webp',
+    'audio/webm': 'webm',
+    'audio/mp4':  'm4a',
+    'audio/mpeg': 'mp3',
+    'video/mp4':  'mp4',
+    'video/webm': 'webm'
   };
-}
-
-/* ---------- VÍDEO: limite de duração + tamanho ---------- */
-export async function processarVideo(file){
-  if(!file) return null;
-  if(file.size > 8 * 1024 * 1024){
-    throw new Error('Vídeo muito grande (máx 8 MB). Grave um mais curto.');
-  }
-  const data = await blobToBase64(file);
-  return {
-    tipo: 'video',
-    mime: file.type || 'video/mp4',
-    data,
-    ts: Date.now(),
-    tamanho: file.size
-  };
+  return mapa[mime] || (tipo === 'foto' ? 'jpg' : 'bin');
 }
 
 /* =========================================================
-   GRAVAÇÃO DE ÁUDIO
+   COMPRESSÃO DE FOTO
    ========================================================= */
-let gravador  = null;
-let chunks    = [];
-let stream    = null;
-let timerId   = null;
-let segundos  = 0;
-let onTickCb  = null;
-let onEndCb   = null;
+export async function comprimirFoto(file, maxW = 1200){
+  const bitmap = await createImageBitmap(file);
+  const scale  = Math.min(1, maxW / bitmap.width);
 
-export function estaGravando(){ return !!gravador && gravador.state === 'recording'; }
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(bitmap.width  * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+
+  return new Promise(resolve => {
+    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.75);
+  });
+}
+
+/* =========================================================
+   UPLOAD GENÉRICO
+   ========================================================= */
+async function upload(paradaId, blob, tipo, mime, meta = {}){
+  if(!paradaId) throw new Error('Parada não informada.');
+  if(!blob)     throw new Error('Arquivo inválido.');
+
+  const ext  = detectarExt(mime, tipo);
+  const path = `paradas/${paradaId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+
+  /* 1) Upload no Storage */
+  const { error: errUp } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, blob, {
+      contentType: mime,
+      upsert: false,
+      cacheControl: '3600'
+    });
+
+  if(errUp) throw new Error('Falha no upload: ' + errUp.message);
+
+  /* 2) Grava metadados */
+  const { data: row, error: errIns } = await supabase
+    .from('anexos')
+    .insert({
+      parada_id:    paradaId,
+      tipo,
+      storage_path: path,
+      mime,
+      tamanho:      blob.size,
+      duracao:      meta.duracao || null
+    })
+    .select()
+    .single();
+
+  if(errIns){
+    /* Rollback: remove arquivo do storage */
+    await supabase.storage.from(BUCKET).remove([path]);
+    throw new Error(errIns.message);
+  }
+
+  return row;
+}
+
+/* =========================================================
+   UPLOADS ESPECÍFICOS
+   ========================================================= */
+export async function uploadFoto(paradaId, file){
+  if(file.size > LIMITE_FOTO_KB * 1024){
+    file = await comprimirFoto(file);   // comprime automaticamente
+  }
+  return upload(paradaId, file, 'foto', 'image/jpeg');
+}
+
+export async function uploadVideo(paradaId, file){
+  if(file.size > LIMITE_VIDEO_MB * 1024 * 1024){
+    throw new Error(`Vídeo muito grande. Máx ${LIMITE_VIDEO_MB} MB.`);
+  }
+  return upload(paradaId, file, 'video', file.type || 'video/mp4');
+}
+
+export async function uploadAudio(paradaId, blob, duracao){
+  if(duracao > LIMITE_AUDIO_S){
+    throw new Error(`Áudio muito longo. Máx ${LIMITE_AUDIO_S}s.`);
+  }
+  return upload(paradaId, blob, 'audio', blob.type || 'audio/webm', { duracao });
+}
+
+/* =========================================================
+   LISTAR ANEXOS DE UMA PARADA
+   ========================================================= */
+export async function listarAnexos(paradaId){
+  const { data, error } = await supabase
+    .from('anexos')
+    .select('*')
+    .eq('parada_id', paradaId)
+    .order('criado_em');
+
+  if(error) throw new Error(error.message);
+  return data || [];
+}
+
+/* =========================================================
+   URL ASSINADA (1h) para exibir anexo
+   ========================================================= */
+export async function urlAnexo(storagePath, expiraSegundos = 3600){
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath, expiraSegundos);
+
+  if(error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+/* =========================================================
+   REMOVER ANEXO
+   ========================================================= */
+export async function removerAnexo(id, storagePath){
+  await supabase.storage.from(BUCKET).remove([storagePath]);
+  await supabase.from('anexos').delete().eq('id', id);
+}
+
+/* =========================================================
+   GRAVAÇÃO DE ÁUDIO (MediaRecorder)
+   ========================================================= */
+let gravador = null;
+let chunks   = [];
+let stream   = null;
+let timerId  = null;
+let segundos = 0;
+
+export function estaGravando(){
+  return !!gravador && gravador.state === 'recording';
+}
 
 export async function iniciarGravacao({ onTick, onEnd } = {}){
   if(estaGravando()) return;
-  if(!navigator.mediaDevices?.getUserMedia){
-    throw new Error('Gravação de áudio não suportada neste navegador.');
-  }
 
-  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
+  stream   = await navigator.mediaDevices.getUserMedia({ audio: true });
   const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
     : 'audio/webm';
 
   gravador = new MediaRecorder(stream, { mimeType: mime });
-  chunks = [];
+  chunks   = [];
   segundos = 0;
-  onTickCb = onTick;
-  onEndCb = onEnd;
 
-  gravador.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
+  gravador.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
 
-  gravador.onstop = async () => {
+  gravador.onstop = () => {
     clearInterval(timerId);
     stream?.getTracks().forEach(t => t.stop());
-    const dur = segundos;
-
-    if(chunks.length === 0){
-      onEndCb?.(null, dur);
-      return limpar();
-    }
-
     const blob = new Blob(chunks, { type: 'audio/webm' });
-    const data = await blobToBase64(blob);
-    const anexo = {
-      tipo: 'audio',
-      mime: 'audio/webm',
-      data,
-      ts: Date.now(),
-      duracao: dur,
-      tamanho: blob.size
-    };
-
-    onEndCb?.(anexo, dur);
-    limpar();
+    onEnd?.(blob, segundos);
   };
 
   gravador.start();
-
   timerId = setInterval(() => {
     segundos++;
-    onTickCb?.(segundos);
+    onTick?.(segundos);
     if(segundos >= LIMITE_AUDIO_S) pararGravacao();
   }, 1000);
 }
@@ -130,46 +200,12 @@ export async function iniciarGravacao({ onTick, onEnd } = {}){
 export function pararGravacao(){
   if(estaGravando()) gravador.stop();
 }
-
-function limpar(){
-  gravador = null;
-  chunks = [];
-  stream = null;
-  clearInterval(timerId);
-}
-
-/* ---------- Persistência do draft ---------- */
-export function adicionarAnexo(anexos, novo){
-  if(!novo) return anexos;
-  return [...(anexos || []), novo];
-}
-
-export function removerAnexo(anexos, ts){
-  return (anexos || []).filter(a => a.ts !== ts);
-}
-
-/* ---------- Total em bytes ---------- */
-export function pesoAnexos(anexos){
-  return (anexos || []).reduce((s,a) => s + (a.tamanho || 0), 0);
-}
-
+/* =========================================================
+   HELPERS — formatação de tamanho
+   ========================================================= */
 export function formatarPeso(bytes){
-  if(bytes < 1024) return bytes + ' B';
-  if(bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  bytes = Number(bytes) || 0;
+  if(bytes < 1024)         return bytes + ' B';
+  if(bytes < 1024 * 1024)  return (bytes / 1024).toFixed(0) + ' KB';
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-}
-import { api } from '../data/api.js';
-
-/* Após salvar uma parada, sobe os anexos para o Storage */
-export async function uploadPendentes(paradaId, anexos){
-  const resultados = [];
-  for(const a of anexos || []){
-    try {
-      const path = await api.uploadAnexo(paradaId, a);
-      resultados.push({ ...a, storagePath: path });
-    } catch(err){
-      console.error('Falha ao subir anexo:', err);
-    }
-  }
-  return resultados;
 }

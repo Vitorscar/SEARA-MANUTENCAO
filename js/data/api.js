@@ -23,6 +23,7 @@ function cacheGet(){
     return raw ? JSON.parse(raw) : null;
   } catch(e){ return null; }
 }
+
 function cacheSet(db){
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(db));
@@ -32,7 +33,7 @@ function cacheSet(db){
 }
 
 /* =========================================================
-   HELPERS — utilitários de data
+   HELPERS DE DATA
    ========================================================= */
 function paraISO(ts){
   if(!ts) return null;
@@ -48,7 +49,7 @@ function paraMs(iso){
 }
 
 /* =========================================================
-   HELPERS — mapeamento linha → objeto
+   HELPERS DE MAPEAMENTO (linha → objeto)
    ========================================================= */
 function mapUsuario(u){
   if(!u) return null;
@@ -63,7 +64,6 @@ function mapUsuario(u){
     role:          u.role,
     ativo:         u.ativo
   };
-
 }
 
 function mapMaquina(m){
@@ -88,12 +88,12 @@ function mapParada(p, anexos = []){
 
     /* Máquina / local */
     maquinaId:           p.maquina_id,
-    maquinaNome:         p.maquina || null,
+    maquinaNome:         p.maquina || p.maquinaNome || null,
     setor:               p.setor || '',
     area:                p.area || '',
 
     /* Identificação */
-    data:                p.data_ocorrencia || null,         // 🆕
+    data:                p.data_ocorrencia || null,
     turno:               p.turno,
     impacto:             p.impacto,
     status:              p.status,
@@ -106,14 +106,14 @@ function mapParada(p, anexos = []){
 
     /* Técnico */
     tecnicoId:           p.tecnico_id,
-    responsavel:         p.responsavel || '',
+    responsavel:         p.responsavel || p.responsavel_nome || '',
     chapaTecnico:        p.chapa_tecnico || '',
 
     /* Falha */
     categoria:           p.categoria || '',
-    causaRaizCategoria:  p.causa_raiz_categoria || '',       // 🆕
+    causaRaizCategoria:  p.causa_raiz_categoria || '',
     componente:          p.componente || '',
-    causaRaiz:           p.causa_raiz || '',                 // texto livre (detalhe)
+    causaRaiz:           p.causa_raiz || '',
 
     /* Ação */
     acaoComponente:      p.acao_componente || '',
@@ -126,7 +126,7 @@ function mapParada(p, anexos = []){
 }
 
 /* =========================================================
-   LOAD
+   LOAD — carrega tudo do Supabase (ou cache)
    ========================================================= */
 async function load(){
   const cached = cacheGet();
@@ -145,9 +145,10 @@ async function load(){
 
       if(u.error) console.warn('[api] usuarios:', u.error.message);
       if(m.error) console.warn('[api] maquinas:', m.error.message);
-      if(p.error) console.warn('[api] paradas:', p.error.message);
+      if(p.error) console.warn('[api] paradas:',  p.error.message);
+      if(a.error) console.warn('[api] anexos:',   a.error.message);
 
-      /* Bloqueia só se máquinas falhar (tabela principal) */
+      /* Só bloqueia se máquinas falhar (tabela principal) */
       if(m.error) throw new Error('maquinas: ' + m.error.message);
 
       const maxSeq = (p.data || []).reduce(
@@ -167,13 +168,13 @@ async function load(){
           tecnicoId: x.tecnico_id
         })),
         equipamentosDescobertos: cached?.equipamentosDescobertos || {},
-        seqParada: maxSeq + 1,
+        seqParada:   maxSeq + 1,
         currentUser: cached?.currentUser || null,
         sessao:      cached?.sessao || null
       };
 
       console.log(
-        `[api] carregado: ${cache.maquinas.length} máquinas, ${cache.tecnicos.length} técnicos`
+        `[api] carregado: ${cache.maquinas.length} máquinas, ${cache.tecnicos.length} técnicos, ${cache.paradas.length} paradas`
       );
       cacheSet(cache);
       return cache;
@@ -235,18 +236,18 @@ const usuariosApi = {
   },
 
   async cadastrar({ nome, chapa, turno, especialidade, role, gestor }){
-  const { data, error } = await supabase.rpc('cadastrar_funcionario', {
-    p_nome:          nome,
-    p_chapa:         chapa,
-    p_turno:         turno,
-    p_especialidade: especialidade || 'Multifuncional',
-    p_role:          role || 'tecnico',
-    p_gestor:        gestor || null
-  });
-  if(error) throw new Error(error.message);
-  if(!data?.ok) throw new Error(data?.msg || 'Erro ao cadastrar');
-  return data.funcionario;
-}
+    const { data, error } = await supabase.rpc('cadastrar_funcionario', {
+      p_nome:          nome,
+      p_chapa:         chapa,
+      p_turno:         turno,
+      p_especialidade: especialidade || 'Multifuncional',
+      p_role:          role || 'tecnico',
+      p_gestor:        gestor || null
+    });
+    if(error) throw new Error(error.message);
+    if(!data?.ok) throw new Error(data?.msg || 'Erro ao cadastrar');
+    return data.funcionario;
+  }
 };
 
 /* =========================================================
@@ -294,6 +295,7 @@ const maquinasApi = {
    PARADAS
    ========================================================= */
 const paradasApi = {
+  /* ---------- LISTAR ---------- */
   async listar({ status = null, limite = 200 } = {}){
     let q = supabase
       .from('paradas')
@@ -306,57 +308,58 @@ const paradasApi = {
     const { data, error } = await q;
     if(error) throw new Error(error.message);
 
-    return (data || []).map(p => ({
-      ...mapParada({ ...p, maquina: p.maquinas?.nome || '' }, [])
-    }));
+    return (data || []).map(p => mapParada({
+      ...p,
+      maquina: p.maquinas?.nome || ''
+    }, []));
   },
 
+  /* ---------- BUSCAR POR ID ---------- */
   async buscar(id){
     const { data, error } = await supabase
       .from('paradas').select('*, maquinas(nome)')
       .eq('id', id).single();
     if(error) throw new Error(error.message);
-    return {
-      ...mapParada({ ...data, maquina: data.maquinas?.nome || '' }, [])
-    };
+    return mapParada({
+      ...data,
+      maquina: data.maquinas?.nome || ''
+    }, []);
   },
 
-  /* =====================================================
-     CRIAR NOVA PARADA
-     ===================================================== */
+  /* ---------- CRIAR ---------- */
   async criar(payload){
     const linha = {
       /* Máquina / local */
-      maquina_id:          payload.maquinaId,
-      setor:               payload.setor || null,
-      area:                payload.area || null,
+      maquina_id:           payload.maquinaId,
+      setor:                payload.setor || null,
+      area:                 payload.area || null,
 
       /* Identificação */
-      data_ocorrencia:     payload.data || new Date().toISOString().slice(0,10), // 🆕
-      turno:               payload.turno,
-      impacto:             payload.impacto || 'Alto',
-      status:              payload.status || 'aguardando',
+      data_ocorrencia:      payload.data || new Date().toISOString().slice(0,10),
+      turno:                payload.turno,
+      impacto:              payload.impacto || 'Alto',
+      status:               payload.status || 'aguardando',
 
       /* Técnico */
-      tecnico_id:          payload.tecnicoId || null,
-      responsavel_nome:    payload.responsavel || null,
-      chapa_tecnico:       payload.chapa || payload.chapaTecnico || null,
+      tecnico_id:           payload.tecnicoId || null,
+      responsavel_nome:     payload.responsavel || null,
+      chapa_tecnico:        payload.chapa || payload.chapaTecnico || null,
 
       /* Falha */
-      categoria:           payload.categoria || null,
-      causa_raiz_categoria: payload.causaRaiz || null,       // 🆕
-      componente:          payload.componente || null,
-      causa_raiz:          payload.causaRaizDetalhe || payload.componente || null,
+      categoria:            payload.categoria || null,
+      causa_raiz_categoria: payload.causaRaiz || null,
+      componente:           payload.componente || null,
+      causa_raiz:           payload.causaRaizDetalhe || payload.causaRaiz || payload.componente || null,
 
       /* Ação */
-      acao_componente:     payload.acaoComponente || null,
-      acao_preventiva:     payload.acaoPreventiva || null,
+      acao_componente:      payload.acaoComponente || null,
+      acao_preventiva:      payload.acaoPreventiva || null,
 
       /* Extras */
-      observacao:          payload.observacao || null,
+      observacao:           payload.observacao || null,
 
       /* Tempo */
-      hora_inicio:         new Date().toISOString()
+      hora_inicio:          new Date().toISOString()
     };
 
     const { data, error } = await supabase
@@ -366,25 +369,49 @@ const paradasApi = {
     return mapParada(data);
   },
 
-  /* =====================================================
-     ENCERRAR PARADA EXISTENTE
-     ===================================================== */
+  /* ---------- ATUALIZAR (edição parcial) ---------- */
+  async atualizar(id, patch = {}){
+    const linha = {};
+
+    if(patch.categoria      != null) linha.categoria            = patch.categoria;
+    if(patch.causaRaiz      != null) linha.causa_raiz_categoria = patch.causaRaiz;
+    if(patch.causaRaizDetalhe != null) linha.causa_raiz         = patch.causaRaizDetalhe;
+    if(patch.componente     != null) linha.componente           = patch.componente;
+    if(patch.acaoComponente != null) linha.acao_componente      = patch.acaoComponente;
+    if(patch.acaoPreventiva != null) linha.acao_preventiva      = patch.acaoPreventiva;
+    if(patch.observacao     != null) linha.observacao           = patch.observacao;
+    if(patch.impacto        != null) linha.impacto              = patch.impacto;
+    if(patch.turno          != null) linha.turno                = patch.turno;
+    if(patch.data           != null) linha.data_ocorrencia      = patch.data;
+
+    if(Object.keys(linha).length === 0){
+      throw new Error('Nenhum campo para atualizar.');
+    }
+
+    const { data, error } = await supabase
+      .from('paradas').update(linha).eq('id', id).select().single();
+
+    if(error) throw new Error(error.message);
+    return mapParada(data);
+  },
+
+  /* ---------- ENCERRAR ---------- */
   async encerrar(id, patch = {}){
     const linha = {
-      status:              'encerrada',
-      hora_fim:            new Date().toISOString(),
-
-      /* Permite corrigir os dados no fechamento */
-      categoria:           patch.categoria,
-      causa_raiz_categoria: patch.causaRaiz || null,         // 🆕
-      componente:          patch.componente,
-      causa_raiz:          patch.causaRaizDetalhe || patch.componente,
-      acao_componente:     patch.acaoComponente,
-      acao_preventiva:     patch.acaoPreventiva || null,     // 🆕
-      observacao:          patch.observacao
+      status:   'encerrada',
+      hora_fim: new Date().toISOString()
     };
 
-    /* Remove chaves undefined/null que não devem ser atualizadas */
+    /* Campos opcionais — só inclui se vieram no patch */
+    if(patch.categoria         != null) linha.categoria            = patch.categoria;
+    if(patch.causaRaiz         != null) linha.causa_raiz_categoria = patch.causaRaiz;
+    if(patch.causaRaizDetalhe  != null) linha.causa_raiz           = patch.causaRaizDetalhe;
+    if(patch.componente        != null) linha.componente           = patch.componente;
+    if(patch.acaoComponente    != null) linha.acao_componente      = patch.acaoComponente;
+    if(patch.acaoPreventiva    != null) linha.acao_preventiva      = patch.acaoPreventiva;
+    if(patch.observacao        != null) linha.observacao           = patch.observacao;
+
+    /* Remove chaves com undefined (mas mantém null explícito) */
     Object.keys(linha).forEach(k => {
       if(linha[k] === undefined) delete linha[k];
     });
@@ -415,7 +442,7 @@ export const api = {
   paradas:  paradasApi,
 
   /* aliases de compatibilidade */
-  validarLoginChapa: loginChapa,
-  validarLoginAdmin: loginAdmin,
+  validarLoginChapa:    loginChapa,
+  validarLoginAdmin:    loginAdmin,
   cadastrarFuncionario: usuariosApi.cadastrar
 };

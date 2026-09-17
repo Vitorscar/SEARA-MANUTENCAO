@@ -1,94 +1,734 @@
 /* ==========================================================================
-   relatorios.css
+   relatorios.css — admin · 3 abas coloridas + hierarquia clara
+   Paleta: navy (geral) · sun (máquinas) · green (equipe)
    ========================================================================== */
 
-.filtros-bar{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  padding:12px;
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  margin-bottom:16px;
-}
-.input-mini{
-  flex:1; min-width:130px;
-  background:var(--panel);
-  border:1.5px solid var(--border);
-  color:var(--text);
-  padding:9px 11px;
-  border-radius:8px;
-  font-size:12.5px;
-  font-family:inherit;
-}
-.input-mini:focus{
-  outline:none;
-  border-color:var(--red);
-  box-shadow:0 0 0 3px rgba(200,16,46,.1);
+.rel-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-6);
 }
 
-/* ---------- Faixa de KPIs ---------- */
-.kpi-strip{
-  display:grid;
-  grid-template-columns:repeat(2, 1fr);
-  gap:10px;
-  margin-bottom:16px;
+/* ==========================================================================
+   ABAS — cada uma com cor própria
+   ========================================================================== */
+.rel-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
 }
-@media (min-width:640px){.kpi-strip{grid-template-columns:repeat(3, 1fr);}}
-@media (min-width:1000px){.kpi-strip{grid-template-columns:repeat(6, 1fr);}}
 
-.kpi-card{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  padding:12px 13px;
-  box-shadow:var(--shadow);
-  position:relative;
-  overflow:hidden;
+.rel-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  font-weight: 800;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s ease;
+  white-space: nowrap;
 }
-.kpi-card::before{
-  content:"";
-  position:absolute;
-  inset:0 auto 0 0;
-  width:3px;
-  background:var(--red);
-}
-.kpi-card.green::before{background:var(--green);}
-.kpi-card.amber::before{background:var(--amber);}
-.kpi-card.sun::before{background:var(--sun-dark);}
-.kpi-card.blue::before{background:var(--blue);}
-.kpi-card.gray::before{background:var(--muted-2);}
 
-.kpi-card b{
-  font-family:var(--mono);
-  font-size:20px;
-  font-weight:900;
-  color:var(--red);
-  display:block;
-  line-height:1.1;
-  margin-bottom:3px;
+.rel-tab:hover {
+  background: var(--white);
+  color: var(--ink);
 }
-.kpi-card.green b{color:var(--green);}
-.kpi-card.amber b{color:var(--amber);}
-.kpi-card.sun b{color:var(--sun-dark);}
-.kpi-card.blue b{color:var(--blue);}
-.kpi-card.gray b{color:var(--muted);}
 
-.kpi-card span{
-  font-size:10px;
-  font-weight:800;
-  color:var(--muted);
-  text-transform:uppercase;
-  letter-spacing:.04em;
-  display:block;
-  line-height:1.2;
+/* ── Aba ativa GERAL (navy) ── */
+.rel-tab.active[data-aba="geral"] {
+  background: var(--navy);
+  color: var(--white);
+  box-shadow: 0 4px 12px rgba(20,43,71,.28);
 }
-.kpi-card small{
-  display:block;
-  font-size:10.5px;
-  color:var(--muted-2);
-  margin-top:4px;
-  font-weight:600;
+
+/* ── Aba ativa MÁQUINAS (âmbar) ── */
+.rel-tab.active[data-aba="maquina"] {
+  background: linear-gradient(135deg, #F5A623, #D97706);
+  color: var(--white);
+  box-shadow: 0 4px 12px rgba(217,119,6,.32);
+}
+
+/* ── Aba ativa EQUIPE (verde) ── */
+.rel-tab.active[data-aba="pessoa"] {
+  background: linear-gradient(135deg, #22A55A, #166534);
+  color: var(--white);
+  box-shadow: 0 4px 12px rgba(22,101,52,.30);
+}
+
+/* ==========================================================================
+   FILTROS — barra clara e destacada
+   ========================================================================== */
+.rel-filtros {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(15,23,42,.04);
+}
+
+@media (min-width: 640px) {
+  .rel-filtros {
+    grid-template-columns: repeat(4, 1fr) auto auto;
+    align-items: end;
+  }
+}
+
+.rel-filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rel-filtro label {
+  font-size: 10.5px;
+  font-weight: 900;
+  color: var(--navy);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.rel-filtro input,
+.rel-filtro select {
+  min-height: 42px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--line);
+  background: var(--bg-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  transition: all .15s;
+}
+
+.rel-filtro input:focus,
+.rel-filtro select:focus {
+  outline: none;
+  border-color: var(--navy);
+  background: var(--white);
+  box-shadow: 0 0 0 3px rgba(20,43,71,.12);
+}
+
+.rel-aplicar {
+  min-height: 42px;
+  background: var(--navy) !important;
+  color: var(--white) !important;
+  border: none !important;
+  font-weight: 800;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(20,43,71,.22);
+}
+.rel-aplicar:hover {
+  filter: brightness(1.10);
+}
+
+.rel-limpar {
+  min-height: 42px;
+  background: var(--bg-2) !important;
+  border: 1.5px solid var(--line) !important;
+  color: var(--ink-soft) !important;
+  font-weight: 700;
+  border-radius: 10px;
+}
+.rel-limpar:hover {
+  border-color: var(--line-2) !important;
+  color: var(--ink) !important;
+}
+
+/* ==========================================================================
+   KPIs — cards coloridos por categoria
+   ========================================================================== */
+.rel-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-3);
+}
+@media (min-width: 640px)  { .rel-kpis { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1000px) { .rel-kpis { grid-template-columns: repeat(6, 1fr); } }
+
+.rel-kpi {
+  position: relative;
+  padding: 14px 16px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: transform .12s, box-shadow .15s;
+}
+
+.rel-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(15,23,42,.10);
+}
+
+/* Faixa de cor à esquerda — cor define a categoria */
+.rel-kpi::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--navy);
+}
+
+/* Cores contextuais por palavra-chave (via :nth-child é frágil,
+   então vou usar classes utilitárias que o JS pode adicionar) */
+.rel-kpi:nth-child(1)::before { background: var(--navy); }
+.rel-kpi:nth-child(2)::before { background: #22A55A; }   /* encerradas = verde */
+.rel-kpi:nth-child(3)::before { background: #F5A623; }   /* abertas  = âmbar */
+.rel-kpi:nth-child(4)::before { background: var(--red); } /* críticas = vermelho */
+.rel-kpi:nth-child(5)::before { background: #8B5CF6; }    /* mttr     = roxo */
+.rel-kpi:nth-child(6)::before { background: #0891B2; }    /* tempo    = azul água */
+
+/* Cor do valor por categoria */
+.rel-kpi:nth-child(1) .rel-kpi__val { color: var(--navy); }
+.rel-kpi:nth-child(2) .rel-kpi__val { color: #166534; }
+.rel-kpi:nth-child(3) .rel-kpi__val { color: #B45309; }
+.rel-kpi:nth-child(4) .rel-kpi__val { color: var(--red); }
+.rel-kpi:nth-child(5) .rel-kpi__val { color: #7C3AED; }
+.rel-kpi:nth-child(6) .rel-kpi__val { color: #0E7490; }
+
+.rel-kpi__val {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.1;
+  color: var(--navy);
+  letter-spacing: -.02em;
+}
+
+.rel-kpi__lbl {
+  font-size: 10.5px;
+  font-weight: 900;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-top: 6px;
+}
+
+.rel-kpi__sub {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   GRÁFICOS — cards com cabeçalho destacado
+   ========================================================================== */
+.rel-chart {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+}
+
+.rel-chart__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--navy);
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 2px solid var(--navy-dim);
+}
+
+.rel-chart__title::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--navy);
+}
+
+/* ==========================================================================
+   BARRAS VERTICAIS (gráfico por dia)
+   ========================================================================== */
+.rel-barras {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 8px;
+  align-items: end;
+  height: 170px;
+  overflow-x: auto;
+  padding: 6px 4px 4px;
+}
+
+.rel-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+}
+
+.rel-bar-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.rel-bar-track {
+  flex: 1;
+  width: 100%;
+  max-width: 32px;
+  background: var(--bg-2);
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.rel-bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, #F5A623 0%, var(--red) 100%);
+  border-radius: 6px 6px 0 0;
+  min-height: 4px;
+  transition: filter .15s;
+}
+
+.rel-bar-col:hover .rel-bar-fill {
+  filter: brightness(1.10);
+}
+
+.rel-bar-lbl {
+  font-size: 9.5px;
+  color: var(--ink-soft);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   PARETO — barras horizontais coloridas
+   ========================================================================== */
+.rel-pareto {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 1.5fr auto;
+  gap: var(--sp-3);
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: var(--fs-xs);
+}
+
+.rel-pareto__lbl {
+  font-weight: 800;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.rel-pareto__track {
+  height: 14px;
+  background: var(--bg-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.rel-pareto__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red) 0%, #F5A623 60%, var(--navy) 100%);
+  border-radius: var(--radius-pill);
+  transition: width .4s ease;
+}
+
+.rel-pareto__val {
+  font-family: var(--mono);
+  font-weight: 900;
+  color: var(--red);
+  white-space: nowrap;
+  font-size: 12px;
+  background: var(--red-dim);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* ==========================================================================
+   RANKING — lista numerada com cores
+   ========================================================================== */
+.rel-rank {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: var(--bg-2);
+  border-radius: 10px;
+  font-size: var(--fs-sm);
+  transition: background .12s;
+}
+
+.rel-rank:hover {
+  background: var(--navy-dim);
+}
+
+.rel-rank:last-child { margin-bottom: 0; }
+
+/* Bolinha numerada (gerada via JS seria ideal, mas vamos usar ::before) */
+.rel-rank__nome {
+  font-weight: 800;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rel-rank__val {
+  font-family: var(--mono);
+  font-weight: 900;
+  color: var(--navy);
+  font-size: 13px;
+  background: var(--white);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.rel-rank__val small {
+  color: var(--ink-soft);
+  font-weight: 700;
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+/* ==========================================================================
+   CARD DE MÁQUINA / PESSOA
+   Cor da faixa lateral varia conforme a aba
+   ========================================================================== */
+.rel-maq-card {
+  position: relative;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--navy);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: var(--sp-3);
+  transition: transform .12s, box-shadow .15s;
+}
+
+.rel-maq-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(15,23,42,.10);
+}
+
+/* Cor conforme a aba ativa (o JS adiciona .rel-view--maquinas / .rel-view--pessoa) */
+.rel-view--maquinas .rel-maq-card {
+  border-left-color: #F5A623;
+  background: linear-gradient(90deg, #FFFBEB 0%, var(--white) 40px);
+}
+.rel-view--pessoas .rel-maq-card {
+  border-left-color: #22A55A;
+  background: linear-gradient(90deg, #ECFDF5 0%, var(--white) 40px);
+}
+
+.rel-maq-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-bottom: 10px;
+}
+
+.rel-maq-nome {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.rel-maq-sub {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin-top: 3px;
+  font-weight: 600;
+}
+
+/* Badge de contagem */
+.rel-maq-badge {
+  background: var(--navy);
+  color: var(--white);
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 15px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  min-width: 44px;
+  text-align: center;
+  box-shadow: 0 3px 8px rgba(20,43,71,.25);
+}
+
+.rel-view--maquinas .rel-maq-badge {
+  background: linear-gradient(135deg, #F5A623, #D97706);
+  box-shadow: 0 3px 8px rgba(217,119,6,.30);
+}
+.rel-view--pessoas .rel-maq-badge {
+  background: linear-gradient(135deg, #22A55A, #166534);
+  box-shadow: 0 3px 8px rgba(22,101,52,.30);
+}
+
+/* Stats (encerradas / abertas / tempo) */
+.rel-maq-stats {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.rel-maq-stats b {
+  font-family: var(--mono);
+  color: var(--ink);
+  font-weight: 900;
+  margin-right: 3px;
+}
+
+/* Tags de categoria */
+.rel-maq-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.rel-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  background: var(--navy-dim);
+  color: var(--navy);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  letter-spacing: .02em;
+}
+
+.rel-view--maquinas .rel-tag {
+  background: #FEF3C7;
+  color: #B45309;
+}
+.rel-view--pessoas .rel-tag {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+/* ==========================================================================
+   TABELA — zebra + hover + header destacado
+   ========================================================================== */
+.rel-tabela-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.rel-tabela {
+  width: 100%;
+  min-width: 500px;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.rel-tabela th,
+.rel-tabela td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.rel-tabela th {
+  background: var(--navy);
+  color: var(--white);
+  font-size: 10.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: none;
+  position: sticky;
+  top: 0;
+}
+
+.rel-tabela tbody tr:nth-child(even) {
+  background: var(--bg-2);
+}
+
+.rel-tabela tbody tr:hover {
+  background: var(--navy-dim);
+}
+
+.rel-tabela td {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Coluna de status com cor */
+.rel-tabela td:last-child {
+  font-weight: 800;
+}
+
+.rel-tabela__empty {
+  text-align: center !important;
+  padding: var(--sp-6) !important;
+  color: var(--ink-soft);
+  font-style: italic;
+  background: var(--bg-2) !important;
+}
+
+/* ==========================================================================
+   EMPTY STATE
+   ========================================================================== */
+.rel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  background: var(--bg-2);
+  border: 2px dashed var(--line-2);
+  border-radius: var(--radius-md);
+}
+
+.rel-empty::before {
+  content: "📭";
+  font-size: 32px;
+  opacity: .7;
+}
+
+/* ==========================================================================
+   TABELA — linha clicável
+   ========================================================================== */
+.rel-tabela__row {
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.rel-tabela__row:hover {
+  background: var(--navy-dim) !important;
+}
+
+.rel-tabela__row:active {
+  background: rgba(20,43,71,.14) !important;
+}
+
+.rel-tabela__acao {
+  text-align: right !important;
+  width: 30px;
+  color: var(--navy);
+}
+
+.rel-tabela__chev {
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: .35;
+  transition: opacity .12s, transform .12s;
+}
+
+.rel-tabela__row:hover .rel-tabela__chev {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+/* ==========================================================================
+   AÇÕES DO CARD (Ver ficha)
+   ========================================================================== */
+.rel-maq-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rel-btn-ficha {
+  background: transparent;
+  border: 1.5px solid currentColor;
+  color: var(--navy);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all .12s;
+  letter-spacing: .02em;
+}
+
+.rel-btn-ficha:hover {
+  background: var(--navy);
+  color: var(--white);
+}
+
+/* Cores por aba */
+.rel-view--maquinas .rel-btn-ficha {
+  color: #D97706;
+}
+.rel-view--maquinas .rel-btn-ficha:hover {
+  background: #D97706;
+  color: var(--white);
+}
+
+.rel-view--pessoas .rel-btn-ficha {
+  color: #166534;
+}
+.rel-view--pessoas .rel-btn-ficha:hover {
+  background: #166534;
+  color: var(--white);
+}
+
+/* Hover no card inteiro */
+.rel-maq-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(15,23,42,.10);
+}
+/* Gestor no card da equipe */
+.rel-maq-gestor {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--bg-2);
+  border-left: 3px solid var(--navy);
+  border-radius: 6px;
+  display: inline-block;
+}
+.rel-maq-gestor b {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* Variante verde pra aba Equipe */
+.rel-view--pessoas .rel-maq-gestor {
+  border-left-color: #166534;
+  background: #ECFDF5;
 }
