@@ -1,8 +1,8 @@
 /* =========================================================
    registro.view.js — formulário completo de parada
-   Seções: Identificação · Tipo de Falha · Componente · Ação
-           Anexos · Fechamento
-   Anexos vão pro Supabase Storage (não mais base64)
+   • Identificação: Chapa → Nome + Gestor automáticos
+   • Cascata: Setor → Máquina (filtrada)
+   • Anexos via Supabase Storage
    ========================================================= */
 
 import { state, novoDraft, getMaquina } from '../core/state.js';
@@ -20,13 +20,8 @@ import {
 import { criarParada, atualizarParada } from '../services/paradas.service.js';
 
 import {
-  iniciarGravacao,
-  pararGravacao,
-  estaGravando,
-  uploadFoto,
-  uploadVideo,
-  uploadAudio,
-  formatarPeso
+  iniciarGravacao, pararGravacao, estaGravando,
+  uploadFoto, uploadVideo, uploadAudio, formatarPeso
 } from '../services/anexos.service.js';
 
 /* =========================================================
@@ -43,28 +38,16 @@ export function renderRegistro(){
   state.draft = state.draft || novoDraft();
   state.draft.anexosPendentes = state.draft.anexosPendentes || [];
 
-  /* ---------- Máquinas agrupadas por setor ---------- */
-  const porSetor = {};
-  (state.db.maquinas || []).forEach(m => {
-    const s = m.setor || 'Sem setor';
-    (porSetor[s] = porSetor[s] || []).push(m);
-  });
+  /* Setores únicos (ordem crescente) */
+  const setores = [...new Set((state.db.maquinas || [])
+    .map(m => m.setor)
+    .filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'pt-BR'));
 
-  /* ⚡ FIX 1: option com data-setor e data-area */
-  const maquinasOptions = Object.keys(porSetor).sort().map(setor => {
-    const opts = porSetor[setor]
-      .sort((a,b) => (a.nome || '').localeCompare(b.nome || ''))
-      .map(m => `<option value="${m.id}"
-                        data-setor="${escapeHtml(m.setor || '')}"
-                        data-area="${escapeHtml(m.area || '')}"
-                        ${paradaEditando?.maquinaId === m.id ? 'selected' : ''}>
-                   ${escapeHtml(m.nome)}
-                 </option>`)
-      .join('');
-    return `<optgroup label="${escapeHtml(setor)}">${opts}</optgroup>`;
-  }).join('');
+  /* Setor inicial (edição ou vazio) */
+  const setorIni = paradaEditando?.setor || '';
 
-  /* ---------- Valores iniciais ---------- */
+  /* Valores iniciais */
   const dataHoje      = new Date().toISOString().slice(0, 10);
   const chapaIni      = paradaEditando?.chapaTecnico || user?.chapa || '';
   const turnoIni      = paradaEditando?.turno || user?.turno || turnoAtual();
@@ -118,19 +101,46 @@ export function renderRegistro(){
               </div>
             </div>
 
+            <!-- Chapa -->
             <div class="reg-field">
-              <label>Chapa do técnico <span class="req">*</span></label>
+              <label>Chapa do funcionário <span class="req">*</span></label>
               <input type="text" id="regChapa" value="${escapeHtml(chapaIni)}"
-                     inputmode="numeric" maxlength="10" placeholder="0000000000" required>
+                     inputmode="numeric" maxlength="10"
+                     placeholder="0000000000" required>
               <small class="reg-hint">10 dígitos numéricos</small>
             </div>
 
-            <div class="reg-field">
-              <label>Máquina / equipamento <span class="req">*</span></label>
-              <select id="regMaquina" required>
-                <option value="">Selecione…</option>
-                ${maquinasOptions}
-              </select>
+            <!-- Painel do funcionário (nome + cargo + gestor) -->
+            <div id="regFuncionarioInfo" class="reg-func-info hidden"></div>
+
+          </div>
+        </div>
+
+        <!-- ═══════════════ LOCALIZAÇÃO ═══════════════ -->
+        <div class="form-card">
+          <div class="form-card__head form-card__head--sun">
+            <span class="form-card__dot form-card__dot--sun"></span>
+            <h3>Localização da parada</h3>
+          </div>
+          <div class="form-card__body">
+
+            <div class="reg-row cols-2">
+              <div class="reg-field">
+                <label>Setor <span class="req">*</span></label>
+                <select id="regSetor" required>
+                  <option value="">Selecione o setor…</option>
+                  ${setores.map(s =>
+                    `<option ${s === setorIni ? 'selected' : ''}>${escapeHtml(s)}</option>`
+                  ).join('')}
+                </select>
+              </div>
+
+              <div class="reg-field">
+                <label>Máquina <span class="req">*</span></label>
+                <select id="regMaquina" required disabled>
+                  <option value="">Selecione o setor primeiro…</option>
+                </select>
+              </div>
             </div>
 
           </div>
@@ -243,13 +253,11 @@ export function renderRegistro(){
                 <span class="anexo-ic">📷</span>
                 <span class="anexo-lbl">Foto</span>
               </button>
-
               <button type="button" class="anexo-btn" id="regBtnAudio"
                       onclick="toggleAudioRegistro()">
                 <span class="anexo-ic" id="regAudioIc">🎤</span>
                 <span class="anexo-lbl" id="regAudioLbl">Áudio</span>
               </button>
-
               <button type="button" class="anexo-btn"
                       onclick="document.getElementById('regVideoInput').click()">
                 <span class="anexo-ic">🎥</span>
@@ -317,11 +325,173 @@ export function renderRegistro(){
     </div>
   `;
 
+  /* ---------- Wiring ---------- */
+  wireChapa();
+  wireSetor();
+  wireChips();
+  wireAnexos();
+
+  /* Se editando, pré-popula */
+  if(paradaEditando){
+    // Preenche setor + máquina
+    const setorEl = document.getElementById('regSetor');
+    if(paradaEditando.setor){
+      setorEl.value = paradaEditando.setor;
+      onSetorChange();
+      const maqEl = document.getElementById('regMaquina');
+      if(maqEl && paradaEditando.maquinaId){
+        maqEl.value = paradaEditando.maquinaId;
+      }
+    }
+    // Pré-preenche os chips de ação
+    if(acaoIni){
+      document.querySelectorAll('#regAcaoCompGrid .reg-chip').forEach(c => {
+        if(c.dataset.val === acaoIni) c.classList.add('active');
+      });
+    }
+    if(preventivaIni){
+      document.querySelectorAll('#regAcaoPrevGrid .reg-chip').forEach(c => {
+        if(c.dataset.val === preventivaIni) c.classList.add('active');
+      });
+    }
+  }
+
+  /* Auto-preenche gestor pra chapa inicial */
+  atualizarInfoFuncionario();
+
   renderAnexosLista();
 }
 
 /* =========================================================
-   CHIPS
+   CHAPA → NOME + CARGO + GESTOR
+   ========================================================= */
+function wireChapa(){
+  const inp = document.getElementById('regChapa');
+  if(!inp) return;
+
+  /* Só números + atualiza info */
+  inp.addEventListener('input', () => {
+    inp.value = inp.value.replace(/\D/g, '').slice(0, 10);
+    atualizarInfoFuncionario();
+  });
+
+  inp.addEventListener('blur', atualizarInfoFuncionario);
+}
+
+function atualizarInfoFuncionario(){
+  const inp    = document.getElementById('regChapa');
+  const infoEl = document.getElementById('regFuncionarioInfo');
+  const respEl = document.getElementById('regResponsavel');
+  if(!inp || !infoEl) return;
+
+  const chapa = inp.value.replace(/\D/g, '');
+  const user  = state.db?.currentUser;
+
+  /* Só preenche quando tiver 10 dígitos */
+  if(chapa.length !== 10){
+    infoEl.classList.add('hidden');
+    infoEl.innerHTML = '';
+    return;
+  }
+
+  /* Busca técnico no cache */
+  let tec = (state.db?.tecnicos || []).find(t => t.chapa === chapa);
+
+  /* Fallback: se for a chapa do usuário logado */
+  if(!tec && chapa === user?.chapa){
+    tec = {
+      nome:          user.nome,
+      especialidade: user.especialidade,
+      gestor:        user.gestor || '',
+      chapa:         chapa
+    };
+  }
+
+  if(!tec){
+    infoEl.classList.remove('hidden');
+    infoEl.innerHTML = `<div class="reg-func-info__err">⚠️ Chapa não encontrada no cadastro.</div>`;
+    return;
+  }
+
+  /* Preenche o responsável automaticamente */
+  if(respEl && !respEl.value.trim()){
+    respEl.value = tec.nome;
+  } else if(respEl){
+    respEl.value = tec.nome;   // sobrescreve sempre que a chapa mudar
+  }
+
+  /* Renderiza o painel */
+  infoEl.classList.remove('hidden');
+  infoEl.innerHTML = `
+    <div class="reg-func-info__row">
+      <span class="lbl">Nome:</span>
+      <b>${escapeHtml(tec.nome)}</b>
+    </div>
+    <div class="reg-func-info__row">
+      <span class="lbl">Cargo:</span>
+      <b>${escapeHtml(tec.especialidade || '—')}</b>
+    </div>
+    <div class="reg-func-info__row">
+      <span class="lbl">Gestor:</span>
+      <b>${escapeHtml(tec.gestor || '— não informado')}</b>
+    </div>
+  `;
+}
+
+/* =========================================================
+   CASCATA — SETOR → MÁQUINA
+   ========================================================= */
+function wireSetor(){
+  const selSetor = document.getElementById('regSetor');
+  if(!selSetor) return;
+
+  selSetor.addEventListener('change', onSetorChange);
+
+  /* Se já tem setor selecionado, popula na hora */
+  if(selSetor.value) onSetorChange();
+}
+
+function onSetorChange(){
+  const setor = document.getElementById('regSetor').value;
+  const sel   = document.getElementById('regMaquina');
+
+  if(!sel) return;
+
+  /* Sem setor → trava máquina */
+  if(!setor){
+    sel.disabled = true;
+    sel.innerHTML = '<option value="">Selecione o setor primeiro…</option>';
+    return;
+  }
+
+  /* Filtra máquinas do setor, ordena por nome */
+  const maqs = (state.db?.maquinas || [])
+    .filter(m => m.setor === setor)
+    .sort((a,b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Selecione a máquina…</option>' +
+    maqs.map(m => `
+      <option value="${m.id}">${escapeHtml(m.nome)}</option>
+    `).join('');
+}
+
+/* =========================================================
+   CHIPS DE AÇÃO
+   ========================================================= */
+function wireChips(){
+  /* Chips já têm onclick inline — nada a fazer */
+}
+
+/* =========================================================
+   ANEXOS
+   ========================================================= */
+function wireAnexos(){
+  /* Handlers já têm onclick inline — nada a fazer */
+}
+
+/* =========================================================
+   EXPORTS
    ========================================================= */
 export function selecionarChipAcao(btn){
   document.querySelectorAll('#regAcaoCompGrid .reg-chip')
@@ -337,9 +507,6 @@ export function selecionarChipPreventiva(btn){
   document.getElementById('regAcaoPreventiva').value = btn.dataset.val;
 }
 
-/* =========================================================
-   CANCELAR
-   ========================================================= */
 export function cancelarRegistro(){
   (state.draft.anexosPendentes || []).forEach(a => {
     if(a.preview) try { URL.revokeObjectURL(a.preview); } catch(_){}
@@ -545,17 +712,11 @@ export async function salvarRegistro(){
   const erro = document.getElementById('regErro');
   erro.classList.add('hidden');
 
-  /* ---------- Coleta ---------- */
+  /* Coleta */
   const data        = document.getElementById('regData').value;
   const chapa       = document.getElementById('regChapa').value.replace(/\D/g, '');
-
-  /* ⚡ FIX 2: captura setor/area do option selecionado */
-  const selMaq   = document.getElementById('regMaquina');
-  const maquinaId = selMaq.value;
-  const optMaq   = selMaq.options[selMaq.selectedIndex];
-  const setorMaq = optMaq?.dataset.setor || '';
-  const areaMaq  = optMaq?.dataset.area  || '';
-
+  const setor       = document.getElementById('regSetor').value;
+  const maquinaId   = document.getElementById('regMaquina').value;
   const turno       = document.getElementById('regTurno').value;
   const impacto     = document.getElementById('regImpacto').value;
   const categoria   = document.getElementById('regTipoFalha').value;
@@ -567,8 +728,9 @@ export async function salvarRegistro(){
   const obs         = document.getElementById('regObs').value.trim();
   const anexos      = state.draft.anexosPendentes || [];
 
-  /* ---------- Validações ---------- */
+  /* Validações */
   if(chapa.length !== 10) return mostrarErro(erro, 'Chapa deve ter 10 dígitos.');
+  if(!setor)              return mostrarErro(erro, 'Selecione o setor.');
   if(!maquinaId)          return mostrarErro(erro, 'Selecione a máquina.');
   if(!categoria)          return mostrarErro(erro, 'Escolha o Tipo de Falha.');
   if(!causaRaiz)          return mostrarErro(erro, 'Escolha a Causa Raiz.');
@@ -576,15 +738,12 @@ export async function salvarRegistro(){
   if(!acaoComp)           return mostrarErro(erro, 'Escolha a ação no componente.');
   if(!responsavel)        return mostrarErro(erro, 'Informe o responsável.');
 
-  /* Chapa existe? */
-  const func = (state.db.tecnicos || []).find(t => t.chapa === chapa);
-  if(!func && chapa !== state.db.currentUser?.chapa){
-    try {
-      const f = await api.usuarios.buscarPorChapa(chapa);
-      if(!f) return mostrarErro(erro, 'Chapa não cadastrada.');
-    } catch(_) {
-      return mostrarErro(erro, 'Chapa não encontrada.');
-    }
+  /* Busca a máquina do cache (pro service confirmar) */
+  const maq = (state.db.maquinas || []).find(m => m.id === maquinaId);
+
+  /* 🆕 Valida que a máquina pertence ao setor selecionado */
+  if(maq && maq.setor && maq.setor !== setor){
+    return mostrarErro(erro, `A máquina "${maq.nome}" não pertence ao setor "${setor}".`);
   }
 
   btn.disabled = true;
@@ -593,9 +752,6 @@ export async function salvarRegistro(){
   try {
     let parada;
 
-    /* ═══════════════════════════════════════════
-       ENCERRAR
-       ═══════════════════════════════════════════ */
     if(modo === 'encerrar' && state.draft.paradaEditando){
       parada = await atualizarParada(state.draft.paradaEditando, {
         data, chapa, turno, impacto, categoria,
@@ -603,29 +759,22 @@ export async function salvarRegistro(){
         acaoComponente: acaoComp,
         acaoPreventiva: acaoPrev,
         responsavel, observacao: obs,
-        setor: setorMaq,   // ⚡ FIX 3 — mantém consistente
-        area:  areaMaq
+        setor,
+        area: maq?.area || ''
       }, { encerrar: true });
-    }
-
-    /* ═══════════════════════════════════════════
-       NOVA PARADA
-       ═══════════════════════════════════════════ */
-    else {
+    } else {
       parada = await criarParada({
         data, chapa, maquinaId, turno, impacto,
         categoria, causaRaiz, componente,
         acaoComponente: acaoComp,
         acaoPreventiva: acaoPrev,
         responsavel, observacao: obs,
-        setor: setorMaq,   // ⚡ FIX 3
-        area:  areaMaq     // ⚡ FIX 3
+        setor,
+        area: maq?.area || ''
       });
     }
 
-    /* ═══════════════════════════════════════════
-       UPLOAD DOS ANEXOS
-       ═══════════════════════════════════════════ */
+    /* Upload dos anexos */
     if(anexos.length > 0 && parada?.id){
       let enviados = 0;
       btn.textContent = `Enviando anexos (0/${anexos.length})…`;

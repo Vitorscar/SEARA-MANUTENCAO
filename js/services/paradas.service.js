@@ -10,9 +10,10 @@ import { api }                         from '../data/api.js';
    CRIAR PARADA
    ========================================================= */
 export async function criarParada(payload){
-  /* ---------- 1) Validações ---------- */
+  /* ---------- 1) Coleta e validações básicas ---------- */
   const chapa      = String(payload.chapa || '').replace(/\D/g, '');
   const maquinaId  = payload.maquinaId;
+  const setor      = String(payload.setor || '').trim();
   const categoria  = payload.categoria;
   const causaRaiz  = payload.causaRaiz;
   const componente = payload.componente;
@@ -20,6 +21,7 @@ export async function criarParada(payload){
 
   if(chapa.length !== 10) throw new Error('Chapa deve ter 10 dígitos.');
   if(!maquinaId)          throw new Error('Máquina não informada.');
+  if(!setor)              throw new Error('Setor não informado.');
   if(!categoria)          throw new Error('Tipo de falha não informado.');
   if(!causaRaiz)          throw new Error('Causa raiz não informada.');
   if(!componente)         throw new Error('Componente não informado.');
@@ -29,7 +31,16 @@ export async function criarParada(payload){
   const maq = getMaquina(maquinaId);
   if(!maq) throw new Error('Máquina não encontrada.');
 
-  /* ---------- 3) Descobre o técnico ---------- */
+  /* ---------- 3) 🆕 Defesa em profundidade: setor ↔ máquina ---------- */
+  /* Garante que a máquina realmente pertence ao setor selecionado */
+  if(maq.setor && maq.setor !== setor){
+    throw new Error(
+      `Máquina "${maq.nome}" não pertence ao setor "${setor}". ` +
+      `Ela está cadastrada em "${maq.setor}".`
+    );
+  }
+
+  /* ---------- 4) Descobre o técnico ---------- */
   const user = state.db?.currentUser;
   let tecnicoId       = user?.id || null;
   let responsavelNome = payload.responsavel || user?.nome || null;
@@ -46,11 +57,12 @@ export async function criarParada(payload){
     }
   }
 
-  /* ---------- 4) Payload pra API ---------- */
+  /* ---------- 5) Payload pra API ---------- */
+  /* ⚠️ Usa o `setor` do payload (validado contra a máquina), não o da máquina */
   const dados = {
     maquinaId,
-    setor:          maq.setor || null,
-    area:           maq.area  || null,
+    setor,
+    area:           payload.area || maq.area || null,
     turno:          payload.turno,
     impacto:        payload.impacto || 'Alto',
     status:         'aguardando',
@@ -69,18 +81,20 @@ export async function criarParada(payload){
     observacao:     payload.observacao || null
   };
 
-  /* ---------- 5) Grava no Supabase ---------- */
+  /* ---------- 6) Grava no Supabase ---------- */
   const parada = await api.paradas.criar(dados);
 
-  /* ---------- 6) Atualiza cache local (com maquinaNome) ---------- */
+  /* ---------- 7) Atualiza cache local (com maquinaNome) ---------- */
   state.db.paradas = state.db.paradas || [];
   state.db.paradas.unshift({
     ...parada,
     maquinaId,
-    maquinaNome: maq.nome
+    maquinaNome: maq.nome,
+    setor,                              /* reforça o setor no cache */
+    area: payload.area || maq.area || ''
   });
 
-  /* ---------- 7) Marca a máquina como parada ---------- */
+  /* ---------- 8) Marca a máquina como parada ---------- */
   maq.status = 'parada';
   try {
     await api.maquinas.atualizar(maquinaId, { status: 'parada' });
@@ -99,7 +113,20 @@ export async function criarParada(payload){
 export async function atualizarParada(id, payload, opts = {}){
   if(!id) throw new Error('ID da parada não informado.');
 
-  /* ---------- 1) Patch base (campos do form) ---------- */
+  /* ---------- 1) Busca a parada atual no cache ---------- */
+  const local = (state.db.paradas || []).find(p => p.id === id);
+
+  /* ---------- 2) Se veio setor, valida contra a máquina ---------- */
+  const maqId = payload.maquinaId || local?.maquinaId;
+  const maq   = maqId ? getMaquina(maqId) : null;
+
+  if(payload.setor && maq?.setor && maq.setor !== payload.setor){
+    throw new Error(
+      `Máquina "${maq.nome}" não pertence ao setor "${payload.setor}".`
+    );
+  }
+
+  /* ---------- 3) Patch base (campos do form) ---------- */
   const patch = {
     categoria:      payload.categoria      || null,
     causaRaiz:      payload.causaRaiz      || null,
@@ -109,35 +136,33 @@ export async function atualizarParada(id, payload, opts = {}){
     observacao:     payload.observacao     || null
   };
 
-  /* ---------- 2) Chama a API conforme o modo ---------- */
+  /* Se veio setor/area (no modo encerrar completo), inclui no patch */
+  if(payload.setor) patch.setor = payload.setor;
+  if(payload.area)  patch.area  = payload.area;
+
+  /* ---------- 4) Chama a API conforme o modo ---------- */
   let paradaAtualizada;
 
   if(opts.encerrar){
     paradaAtualizada = await api.paradas.encerrar(id, patch);
   } else {
-    /* Edição sem encerrar — update direto */
     paradaAtualizada = await api.paradas.atualizar(id, patch);
   }
 
-  /* ---------- 3) Sincroniza cache local ---------- */
-  const local = (state.db.paradas || []).find(p => p.id === id);
+  /* ---------- 5) Sincroniza cache local ---------- */
   if(local){
     Object.assign(local, paradaAtualizada || {}, patch);
   }
 
-  /* ---------- 4) Libera a máquina se encerrou ---------- */
-  if(opts.encerrar){
-    const maqId = paradaAtualizada?.maquinaId || local?.maquinaId;
-    const maq   = (state.db.maquinas || []).find(m => m.id === maqId);
+  /* ---------- 6) Libera a máquina se encerrou ---------- */
+  if(opts.encerrar && maqId){
+    const m = (state.db.maquinas || []).find(x => x.id === maqId);
+    if(m) m.status = 'operando';
 
-    if(maq) maq.status = 'operando';
-
-    if(maqId){
-      try {
-        await api.maquinas.atualizar(maqId, { status: 'operando' });
-      } catch(err){
-        console.warn('[paradas] máquina não foi liberada:', err.message);
-      }
+    try {
+      await api.maquinas.atualizar(maqId, { status: 'operando' });
+    } catch(err){
+      console.warn('[paradas] máquina não foi liberada:', err.message);
     }
   }
 
@@ -158,4 +183,11 @@ export function totalParadasAbertas(){
 
 export function getParada(id){
   return (state.db.paradas || []).find(p => p.id === id) || null;
+}
+
+/* 🆕 Retorna todas as paradas abertas de uma máquina específica */
+export function getParadasAbertasDaMaquina(maquinaId){
+  return (state.db.paradas || []).filter(
+    p => p.maquinaId === maquinaId && p.status !== 'encerrada'
+  );
 }

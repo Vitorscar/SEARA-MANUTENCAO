@@ -1,5 +1,6 @@
 /* =========================================================
    relatorios.service.js — agregações com filtro
+   Paradas sempre ordenadas por horaInicio desc (mais recente 1º)
    ========================================================= */
 
 import { state, getMaquina, getTecnico } from '../core/state.js';
@@ -14,25 +15,38 @@ function tsDeData(str){
   const [y, m, d] = str.split('-').map(Number);
   return new Date(y, m - 1, d, 0, 0, 0).getTime();
 }
+
 function tsFimDoDia(str){
   if(!str) return null;
   const [y, m, d] = str.split('-').map(Number);
   return new Date(y, m - 1, d, 23, 59, 59).getTime();
 }
+
 function minutosDecorridos(p){
   if(!p.horaInicio) return 0;
   if(p.horaFim) return p.duracaoMin || 0;
   return Math.round((Date.now() - p.horaInicio) / 60000);
 }
+
 function labelMesDia(ts){
   const d = new Date(ts);
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
 }
 
+/* 🆕 Ordena por horaInicio desc (mais recente primeiro)
+   Desempate por número da parada */
+function ordenarPorData(arr){
+  return [...(arr || [])].sort((a, b) => {
+    const diff = (b.horaInicio || 0) - (a.horaInicio || 0);
+    if(diff !== 0) return diff;
+    return (b.numero || 0) - (a.numero || 0);
+  });
+}
+
 /* =========================================================
    FILTRO BASE
    ========================================================= */
-export function filtrarParadas({ inicio, fim, setor, tecnicoId } = {}){
+export function filtrarParadas({ inicio, fim, setor, tecnicoId, maquinaId, supervisor } = {}){
   const t0 = tsDeData(inicio);
   const t1 = tsFimDoDia(fim);
 
@@ -41,6 +55,14 @@ export function filtrarParadas({ inicio, fim, setor, tecnicoId } = {}){
     if(t1 && p.horaInicio > t1) return false;
     if(setor && p.setor !== setor) return false;
     if(tecnicoId && p.tecnicoId !== tecnicoId) return false;
+    if(maquinaId && p.maquinaId !== maquinaId) return false;
+
+    /* Filtra por supervisor via técnico */
+    if(supervisor){
+      const t = (state.db?.tecnicos || []).find(x => x.id === p.tecnicoId);
+      if(!t || t.gestor !== supervisor) return false;
+    }
+
     return true;
   });
 }
@@ -49,7 +71,7 @@ export function filtrarParadas({ inicio, fim, setor, tecnicoId } = {}){
    1) RELATÓRIO GERAL
    ========================================================= */
 export function relatorioGeral(filtros){
-  const paradas = filtrarParadas(filtros);
+  const paradas    = filtrarParadas(filtros);
   const encerradas = paradas.filter(p => p.status === 'encerrada');
 
   const totalMin = encerradas.reduce((s,p) => s + (p.duracaoMin || 0), 0);
@@ -91,7 +113,10 @@ export function relatorioGeral(filtros){
   const tendencia = Object.entries(porDia)
     .sort(([a],[b]) => a.localeCompare(b))
     .slice(-14)
-    .map(([dia, count]) => ({ dia: labelMesDia(new Date(dia).getTime()), count }));
+    .map(([dia, count]) => ({
+      dia: labelMesDia(new Date(dia).getTime()),
+      count
+    }));
 
   /* Turno */
   const porTurno = {};
@@ -113,21 +138,26 @@ export function relatorioGeral(filtros){
     .sort((a,b) => b.minutos - a.minutos)
     .slice(0, 8);
 
-  return { kpis, pareto, tendencia, porTurno, topMaquinas, paradas };
+  /* ⚡ Ordena paradas — mais recente primeiro */
+  return {
+    kpis, pareto, tendencia, porTurno, topMaquinas,
+    paradas: ordenarPorData(paradas)
+  };
 }
 
 /* =========================================================
    2) RELATÓRIO POR MÁQUINA
    ========================================================= */
 export function relatorioPorMaquina(filtros){
-  const paradas = filtrarParadas(filtros);
+  const paradas    = filtrarParadas(filtros);
   const encerradas = paradas.filter(p => p.status === 'encerrada');
 
   /* Agrupa por máquina */
   const porMaq = {};
   paradas.forEach(p => {
-    const m = getMaquina(p.maquinaId);
+    const m  = getMaquina(p.maquinaId);
     const id = p.maquinaId;
+
     if(!porMaq[id]){
       porMaq[id] = {
         id,
@@ -142,22 +172,27 @@ export function relatorioPorMaquina(filtros){
         ultimaParada: null
       };
     }
+
     const g = porMaq[id];
     g.total++;
+
     if(p.status === 'encerrada'){
       g.encerradas++;
       g.minutosTotal += p.duracaoMin || 0;
     } else {
       g.abertas++;
     }
+
     const cat = p.categoria || 'Sem categoria';
     g.categorias[cat] = (g.categorias[cat] || 0) + 1;
+
     if(!g.ultimaParada || p.horaInicio > g.ultimaParada){
       g.ultimaParada = p.horaInicio;
     }
   });
 
-  const maquinas = Object.values(porMaq).sort((a,b) => b.total - a.total);
+  const maquinas = Object.values(porMaq)
+    .sort((a,b) => b.total - a.total);
 
   /* KPIs */
   const kpis = {
@@ -168,22 +203,28 @@ export function relatorioPorMaquina(filtros){
   };
 
   /* Setores únicos */
-  const setores = [...new Set(maquinas.map(m => m.setor).filter(Boolean))].sort();
+  const setores = [...new Set(maquinas.map(m => m.setor).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'pt-BR'));
 
-  return { kpis, maquinas, setores, paradas };
+  /* ⚡ Ordena paradas — mais recente primeiro */
+  return {
+    kpis, maquinas, setores,
+    paradas: ordenarPorData(paradas)
+  };
 }
 
 /* =========================================================
    3) RELATÓRIO POR PESSOA
    ========================================================= */
 export function relatorioPorPessoa(filtros){
-  const paradas = filtrarParadas(filtros);
+  const paradas    = filtrarParadas(filtros);
   const encerradas = paradas.filter(p => p.status === 'encerrada');
 
   const porTec = {};
   paradas.forEach(p => {
-    const t = p.tecnicoId ? getTecnico(p.tecnicoId) : null;
+    const t  = p.tecnicoId ? getTecnico(p.tecnicoId) : null;
     const id = p.tecnicoId || 'sem_tecnico';
+
     if(!porTec[id]){
       porTec[id] = {
         id,
@@ -197,12 +238,15 @@ export function relatorioPorPessoa(filtros){
         categorias: {}
       };
     }
+
     const g = porTec[id];
     g.total++;
+
     if(p.status === 'encerrada'){
       g.encerradas++;
       g.minutosTotal += p.duracaoMin || 0;
     }
+
     const cat = p.categoria || 'Sem categoria';
     g.categorias[cat] = (g.categorias[cat] || 0) + 1;
   });
@@ -218,15 +262,19 @@ export function relatorioPorPessoa(filtros){
     .sort((a,b) => b.total - a.total);
 
   const kpis = {
-    totalPessoas:    pessoas.length,
-    totalParadas:    paradas.length,
-    pessoaTop:       pessoas[0]?.nome || '—',
-    mttrMedio:       encerradas.length
+    totalPessoas: pessoas.length,
+    totalParadas: paradas.length,
+    pessoaTop:    pessoas[0]?.nome || '—',
+    mttrMedio:    encerradas.length
       ? Math.round(encerradas.reduce((s,p) => s + (p.duracaoMin || 0), 0) / encerradas.length)
       : null
   };
 
-  return { kpis, pessoas, paradas };
+  /* ⚡ Ordena paradas — mais recente primeiro */
+  return {
+    kpis, pessoas,
+    paradas: ordenarPorData(paradas)
+  };
 }
 
 export { DOW };

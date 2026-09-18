@@ -732,3 +732,38 @@
   border-left-color: #166534;
   background: #ECFDF5;
 }
+/* Campo de busca inteligente */
+.rel-filtro input[list]{
+  background: var(--white);
+  cursor: text;
+}
+
+.rel-filtro input[list]:focus{
+  background: var(--white);
+  box-shadow: 0 0 0 3px rgba(20,43,71,.14);
+}
+
+/* Gestor no card da equipe */
+.rel-maq-gestor{
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin-top: 5px;
+  padding: 4px 8px;
+  background: var(--bg-2);
+  border-left: 3px solid var(--navy);
+  border-radius: 6px;
+  display: inline-block;
+  font-weight: 600;
+}
+.rel-maq-gestor b{
+  color: var(--ink);
+  font-weight: 800;
+}
+.rel-view--pessoas .rel-maq-gestor{
+  border-left-color: #166534;
+  background: #ECFDF5;
+  color: #166534;
+}
+.rel-view--pessoas .rel-maq-gestor b{
+  color: #0F3D22;
+}

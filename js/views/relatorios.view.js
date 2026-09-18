@@ -1,15 +1,13 @@
 /* =========================================================
-   relatorios.view.js — admin: 3 abas + filtros + drill-down
+   relatorios.view.js — admin: 3 abas + busca inteligente
+   Dependências: Setor→Máquina · Supervisor→Funcionário
    ========================================================= */
 
 import { state, getMaquina, getTecnico } from '../core/state.js';
-import { navigate }                      from '../core/router.js';       // 🆕
+import { navigate }                      from '../core/router.js';
 import { toast }                         from '../ui/toast.js';
 import { escapeHtml, fmtDuracaoMin }     from '../core/utils.js';
-import { abrirDetalheParada }            from '../ui/parada-detail.js';   // 🆕
-
-/* ⚠️ REMOVIDO: import de navegarExtratoMaquina/navegarExtratoTecnico
-   (causava ciclo relatorios ↔ extrato) */
+import { abrirDetalheParada }            from '../ui/parada-detail.js';
 
 import {
   relatorioGeral,
@@ -23,64 +21,64 @@ import {
 let abaAtiva = 'geral';
 
 const filtros = {
-  inicio:    '',
-  fim:       '',
-  setor:     '',
-  tecnicoId: ''
+  inicio:     '',
+  fim:        '',
+  setor:      '',
+  maquinaId:  '',
+  supervisor: '',
+  tecnicoId:  ''
 };
 
 /* =========================================================
-   HELPERS GLOBAIS (definidos ANTES de serem usados)
+   HELPERS — busca inteligente
    ========================================================= */
 
-/* Abre o modal de detalhe da parada a partir do ID */
-function abrirParadaDoRelatorio(id){
-  const p = (state.db?.paradas || []).find(x => x.id === id);
-  if(!p){
-    toast('Parada não encontrada', 'error');
-    return;
-  }
-  abrirDetalheParada(p);
+/* Normaliza string (case-insensitive + sem acento) */
+function normalizar(s){
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
 
-/* Navega pro extrato filtrado por máquina */
-function irParaExtratoMaquina(maquinaId){
-  const maq = getMaquina(maquinaId);
-  if(!maq){
-    toast('Máquina não encontrada', 'error');
-    return;
-  }
-
-  state.filtros = state.filtros || {};
-  state.filtros.extrato = {
-    ...(state.filtros.extrato || {}),
-    maquinaId,
-    tecnicoId: '',
-    inicio: filtros.inicio,
-    fim:    filtros.fim
-  };
-
-  navigate('extrato');
+/* Retorna os itens ordenados alfabeticamente (pt-BR) */
+function ordenar(arr, chave){
+  return [...arr].sort((a,b) =>
+    String(a[chave] || '').localeCompare(String(b[chave] || ''), 'pt-BR')
+  );
 }
 
-/* Navega pro extrato filtrado por técnico */
-function irParaExtratoTecnico(tecnicoId){
-  const tec = getTecnico(tecnicoId);
-  if(!tec){
-    toast('Funcionário não encontrado', 'error');
-    return;
-  }
+/* Setores únicos (ordem crescente) */
+function setoresUnicos(){
+  return [...new Set((state.db?.maquinas || [])
+    .map(m => m.setor)
+    .filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'pt-BR'));
+}
 
-  state.filtros = state.filtros || {};
-  state.filtros.extrato = {
-    ...(state.filtros.extrato || {}),
-    tecnicoId,
-    maquinaId: '',
-    inicio: filtros.inicio,
-    fim:    filtros.fim
-  };
+/* Máquinas do setor (ou todas) — ordem crescente */
+function maquinasDoSetor(setor){
+  return ordenar(
+    (state.db?.maquinas || []).filter(m => !setor || m.setor === setor),
+    'nome'
+  );
+}
 
-  navigate('extrato');
+/* Supervisores/gestores únicos (ordem crescente) */
+function supervisoresUnicos(){
+  return [...new Set((state.db?.tecnicos || [])
+    .map(t => t.gestor)
+    .filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/* Técnicos de um supervisor (ou todos) — ordem crescente */
+function tecnicosDoSupervisor(supervisor){
+  return ordenar(
+    (state.db?.tecnicos || []).filter(t => !supervisor || t.gestor === supervisor),
+    'nome'
+  );
 }
 
 /* =========================================================
@@ -113,48 +111,12 @@ export function renderRelatorios(){
         </button>
       </div>
 
-      <!-- Filtros -->
-      <div class="rel-filtros">
-        <div class="rel-filtro">
-          <label>Data início</label>
-          <input type="date" id="rel-inicio" value="${filtros.inicio}">
-        </div>
-        <div class="rel-filtro">
-          <label>Data fim</label>
-          <input type="date" id="rel-fim" value="${filtros.fim}">
-        </div>
-
-        ${abaAtiva === 'maquina' ? `
-          <div class="rel-filtro">
-            <label>Setor</label>
-            <select id="rel-setor">
-              <option value="">Todos</option>
-              ${setoresDoEstado().map(s =>
-                `<option ${filtros.setor===s?'selected':''}>${escapeHtml(s)}</option>`
-              ).join('')}
-            </select>
-          </div>
-        ` : ''}
-
-        ${abaAtiva === 'pessoa' ? `
-          <div class="rel-filtro">
-            <label>Funcionário</label>
-            <select id="rel-tecnico">
-              <option value="">Todos</option>
-              ${(state.db?.tecnicos || []).map(t =>
-                `<option value="${t.id}" ${filtros.tecnicoId===t.id?'selected':''}>
-                  ${escapeHtml(t.nome)}
-                </option>`
-              ).join('')}
-            </select>
-          </div>
-        ` : ''}
-
-        <button type="button" class="btn sm primary rel-aplicar" id="rel-aplicar">Filtrar</button>
-        <button type="button" class="btn sm ghost rel-limpar"    id="rel-limpar">Limpar</button>
+      <!-- Filtros (variam por aba) -->
+      <div class="rel-filtros" id="rel-filtros">
+        ${htmlFiltros()}
       </div>
 
-      <!-- Conteúdo (preenchido por aba) -->
+      <!-- Conteúdo -->
       <div id="rel-conteudo"></div>
     </div>
   `;
@@ -165,44 +127,258 @@ export function renderRelatorios(){
 }
 
 /* =========================================================
-   WIRING
+   FILTROS POR ABA
+   ========================================================= */
+function htmlFiltros(){
+  const campoDataInicio = `
+    <div class="rel-filtro">
+      <label>Data início</label>
+      <input type="date" id="rel-inicio" value="${filtros.inicio}">
+    </div>
+  `;
+  const campoDataFim = `
+    <div class="rel-filtro">
+      <label>Data fim</label>
+      <input type="date" id="rel-fim" value="${filtros.fim}">
+    </div>
+  `;
+  const btnAplicar = `<button type="button" class="btn sm primary rel-aplicar" id="rel-aplicar">Filtrar</button>`;
+  const btnLimpar  = `<button type="button" class="btn sm ghost rel-limpar" id="rel-limpar">Limpar</button>`;
+
+  /* ---------- ABA GERAL ---------- */
+  if(abaAtiva === 'geral'){
+    return campoDataInicio + campoDataFim + btnAplicar + btnLimpar;
+  }
+
+  /* ---------- ABA MÁQUINAS ---------- */
+  if(abaAtiva === 'maquina'){
+    const setores  = setoresUnicos().map(s => ({ id: s, label: s }));
+    const maquinas = maquinasDoSetor(filtros.setor).map(m => ({ id: m.id, label: m.nome }));
+
+    const textoMaq = filtros.maquinaId
+      ? (getMaquina(filtros.maquinaId)?.nome || '')
+      : '';
+
+    return `
+      ${renderSearchField({
+        id: 'rel-setor',
+        label: 'Setor',
+        placeholder: 'Digite o setor…',
+        items: setores,
+        valueText: filtros.setor,
+        selectedId: filtros.setor
+      })}
+      ${renderSearchField({
+        id: 'rel-maquina',
+        label: 'Máquina',
+        placeholder: 'Digite a máquina…',
+        items: maquinas,
+        valueText: textoMaq,
+        selectedId: filtros.maquinaId
+      })}
+      ${campoDataInicio}
+      ${campoDataFim}
+      ${btnAplicar}
+      ${btnLimpar}
+    `;
+  }
+
+  /* ---------- ABA EQUIPE ---------- */
+  if(abaAtiva === 'pessoa'){
+    const supervisores = supervisoresUnicos().map(s => ({ id: s, label: s }));
+    const funcionarios = tecnicosDoSupervisor(filtros.supervisor).map(t => ({ id: t.id, label: t.nome }));
+
+    const textoFunc = filtros.tecnicoId
+      ? (getTecnico(filtros.tecnicoId)?.nome || '')
+      : '';
+
+    return `
+      ${renderSearchField({
+        id: 'rel-supervisor',
+        label: 'Supervisor',
+        placeholder: 'Digite o supervisor…',
+        items: supervisores,
+        valueText: filtros.supervisor,
+        selectedId: filtros.supervisor
+      })}
+      ${renderSearchField({
+        id: 'rel-funcionario',
+        label: 'Funcionário',
+        placeholder: 'Digite o funcionário…',
+        items: funcionarios,
+        valueText: textoFunc,
+        selectedId: filtros.tecnicoId
+      })}
+      ${campoDataInicio}
+      ${campoDataFim}
+      ${btnAplicar}
+      ${btnLimpar}
+    `;
+  }
+}
+
+/* Campo de busca inteligente (input + datalist) */
+function renderSearchField({ id, label, placeholder, items, valueText = '', selectedId = '' }){
+  const listId = id + '-list';
+
+  return `
+    <div class="rel-filtro">
+      <label>${escapeHtml(label)}</label>
+      <input type="text"
+             id="${id}"
+             class="input-mini"
+             list="${listId}"
+             placeholder="${escapeHtml(placeholder)}"
+             value="${escapeHtml(valueText)}"
+             data-id="${escapeHtml(selectedId)}"
+             autocomplete="off"
+             autocapitalize="off"
+             autocorrect="off"
+             spellcheck="false">
+      <datalist id="${listId}">
+        ${items.map(it =>
+          `<option value="${escapeHtml(it.label)}"></option>`
+        ).join('')}
+      </datalist>
+    </div>
+  `;
+}
+
+/* =========================================================
+   WIRING — ABAS
    ========================================================= */
 function wireTabs(){
   document.querySelectorAll('.rel-tab').forEach(t => {
     t.onclick = () => {
       abaAtiva = t.dataset.aba;
 
-      if(abaAtiva !== 'maquina') filtros.setor     = '';
-      if(abaAtiva !== 'pessoa')  filtros.tecnicoId = '';
+      /* Limpa filtros da aba que saiu */
+      if(abaAtiva !== 'maquina'){
+        filtros.setor     = '';
+        filtros.maquinaId = '';
+      }
+      if(abaAtiva !== 'pessoa'){
+        filtros.supervisor = '';
+        filtros.tecnicoId  = '';
+      }
 
       renderRelatorios();
     };
   });
 }
 
+/* =========================================================
+   WIRING — FILTROS
+   ========================================================= */
 function wireFiltros(){
-  document.getElementById('rel-aplicar').onclick = () => {
-    filtros.inicio = document.getElementById('rel-inicio').value;
-    filtros.fim    = document.getElementById('rel-fim').value;
+  /* ----- Datas ----- */
+  document.getElementById('rel-inicio')?.addEventListener('change', e => {
+    filtros.inicio = e.target.value;
+  });
+  document.getElementById('rel-fim')?.addEventListener('change', e => {
+    filtros.fim = e.target.value;
+  });
 
-    const selSetor = document.getElementById('rel-setor');
-    if(selSetor) filtros.setor = selSetor.value;
+  /* ----- Setor ----- */
+  document.getElementById('rel-setor')?.addEventListener('change', onSetorChange);
 
-    const selTec = document.getElementById('rel-tecnico');
-    if(selTec) filtros.tecnicoId = selTec.value;
+  /* ----- Máquina ----- */
+  document.getElementById('rel-maquina')?.addEventListener('change', onMaquinaChange);
 
-    renderConteudo();
-  };
+  /* ----- Supervisor ----- */
+  document.getElementById('rel-supervisor')?.addEventListener('change', onSupervisorChange);
 
-  document.getElementById('rel-limpar').onclick = () => {
-    filtros.inicio    = '';
-    filtros.fim       = '';
-    filtros.setor     = '';
-    filtros.tecnicoId = '';
-    renderRelatorios();
-  };
+  /* ----- Funcionário ----- */
+  document.getElementById('rel-funcionario')?.addEventListener('change', onFuncionarioChange);
 
-  document.getElementById('rel-exportar').onclick = exportarExcel;
+  /* ----- Botões ----- */
+  document.getElementById('rel-aplicar')?.addEventListener('click', renderConteudo);
+  document.getElementById('rel-limpar')?.addEventListener('click', limparFiltros);
+  document.getElementById('rel-exportar')?.addEventListener('click', exportarExcel);
+}
+
+/* ----- Handlers com filtro dependente ----- */
+
+function onSetorChange(){
+  const input   = document.getElementById('rel-setor');
+  const texto   = input.value.trim();
+  const setores = setoresUnicos().map(s => ({ id: s, label: s }));
+  const match   = setores.find(s => normalizar(s.label) === normalizar(texto));
+
+  filtros.setor = match ? match.label : '';
+
+  /* Atualiza o datalist de máquinas ao vivo */
+  const listMaq = document.getElementById('rel-maquina-list');
+  if(listMaq){
+    const maquinas = maquinasDoSetor(filtros.setor);
+    listMaq.innerHTML = maquinas.map(m =>
+      `<option value="${escapeHtml(m.nome)}"></option>`
+    ).join('');
+  }
+
+  /* Limpa máquina quando o setor muda */
+  const inMaq = document.getElementById('rel-maquina');
+  if(inMaq){
+    inMaq.value = '';
+    inMaq.dataset.id = '';
+  }
+  filtros.maquinaId = '';
+}
+
+function onMaquinaChange(){
+  const input    = document.getElementById('rel-maquina');
+  const texto    = input.value.trim();
+  const maquinas = maquinasDoSetor(filtros.setor);
+  const match    = maquinas.find(m => normalizar(m.nome) === normalizar(texto));
+
+  filtros.maquinaId = match ? match.id : '';
+  input.dataset.id  = filtros.maquinaId;
+}
+
+function onSupervisorChange(){
+  const input        = document.getElementById('rel-supervisor');
+  const texto        = input.value.trim();
+  const supervisores = supervisoresUnicos();
+  const match        = supervisores.find(s => normalizar(s) === normalizar(texto));
+
+  filtros.supervisor = match || '';
+
+  /* Atualiza o datalist de funcionários ao vivo */
+  const listFunc = document.getElementById('rel-funcionario-list');
+  if(listFunc){
+    const funcionarios = tecnicosDoSupervisor(filtros.supervisor);
+    listFunc.innerHTML = funcionarios.map(t =>
+      `<option value="${escapeHtml(t.nome)}"></option>`
+    ).join('');
+  }
+
+  /* Limpa funcionário quando o supervisor muda */
+  const inFunc = document.getElementById('rel-funcionario');
+  if(inFunc){
+    inFunc.value = '';
+    inFunc.dataset.id = '';
+  }
+  filtros.tecnicoId = '';
+}
+
+function onFuncionarioChange(){
+  const input        = document.getElementById('rel-funcionario');
+  const texto        = input.value.trim();
+  const funcionarios = tecnicosDoSupervisor(filtros.supervisor);
+  const match        = funcionarios.find(t => normalizar(t.nome) === normalizar(texto));
+
+  filtros.tecnicoId = match ? match.id : '';
+  input.dataset.id  = filtros.tecnicoId;
+}
+
+function limparFiltros(){
+  filtros.inicio     = '';
+  filtros.fim        = '';
+  filtros.setor      = '';
+  filtros.maquinaId  = '';
+  filtros.supervisor = '';
+  filtros.tecnicoId  = '';
+  renderRelatorios();
 }
 
 /* =========================================================
@@ -317,7 +493,14 @@ function htmlGeral(){
    ABA: MÁQUINAS
    ========================================================= */
 function htmlMaquina(){
-  const r = relatorioPorMaquina(filtros);
+  /* Aplica todos os filtros ativos */
+  const r = relatorioPorMaquina({
+    inicio: filtros.inicio,
+    fim:    filtros.fim,
+    setor:  filtros.setor,
+    maquinaId: filtros.maquinaId
+  });
+
   const k = r.kpis;
 
   return `
@@ -373,7 +556,13 @@ function htmlMaquina(){
    ABA: EQUIPE
    ========================================================= */
 function htmlPessoa(){
-  const r = relatorioPorPessoa(filtros);
+  const r = relatorioPorPessoa({
+    inicio:    filtros.inicio,
+    fim:       filtros.fim,
+    tecnicoId: filtros.tecnicoId,
+    supervisor: filtros.supervisor
+  });
+
   const k = r.kpis;
 
   return `
@@ -392,11 +581,11 @@ function htmlPessoa(){
               <div>
                 <div class="rel-maq-nome">${escapeHtml(p.nome)}</div>
                 <div class="rel-maq-sub">
-  ${escapeHtml(p.especialidade)} · ${escapeHtml(p.turno)}
-</div>
-<div class="rel-maq-gestor">
-  👤 Gestor: <b>${escapeHtml(p.gestor || 'Não informado')}</b>
-</div>
+                  ${escapeHtml(p.especialidade)} · ${escapeHtml(p.turno)}
+                </div>
+                <div class="rel-maq-gestor">
+                  👤 Gestor: <b>${escapeHtml(p.gestor || 'Não informado')}</b>
+                </div>
               </div>
               <div class="rel-maq-badge">${p.total}</div>
             </div>
@@ -429,19 +618,16 @@ function htmlPessoa(){
 }
 
 /* =========================================================
-   WIRING — CLIQUE NA TABELA (GERAL)
+   WIRING — CLIQUE EM CARDS/TABELA
    ========================================================= */
 function wireTabelaCliques(){
   document.querySelectorAll('.rel-tabela__row').forEach(tr => {
     tr.addEventListener('click', () => {
-      abrirParadaDoRelatorio(tr.dataset.paradaId);   // ← agora a função existe
+      abrirParadaDoRelatorio(tr.dataset.paradaId);
     });
   });
 }
 
-/* =========================================================
-   WIRING — CARDS DE MÁQUINA
-   ========================================================= */
 function wireCardsMaquina(){
   document.querySelectorAll('[data-maquina-id]').forEach(el => {
     if(el.classList.contains('rel-btn-ficha')){
@@ -451,19 +637,13 @@ function wireCardsMaquina(){
       });
       return;
     }
-
     if(el.classList.contains('rel-maq-card')){
       el.style.cursor = 'pointer';
-      el.addEventListener('click', () => {
-        irParaExtratoMaquina(el.dataset.maquinaId);
-      });
+      el.addEventListener('click', () => irParaExtratoMaquina(el.dataset.maquinaId));
     }
   });
 }
 
-/* =========================================================
-   WIRING — CARDS DE TÉCNICO
-   ========================================================= */
 function wireCardsPessoa(){
   document.querySelectorAll('[data-tecnico-id]').forEach(el => {
     if(el.classList.contains('rel-btn-ficha')){
@@ -473,14 +653,60 @@ function wireCardsPessoa(){
       });
       return;
     }
-
     if(el.classList.contains('rel-maq-card')){
       el.style.cursor = 'pointer';
-      el.addEventListener('click', () => {
-        irParaExtratoTecnico(el.dataset.tecnicoId);
-      });
+      el.addEventListener('click', () => irParaExtratoTecnico(el.dataset.tecnicoId));
     }
   });
+}
+
+/* =========================================================
+   NAVEGAÇÃO PARA EXTRATO FILTRADO
+   ========================================================= */
+function irParaExtratoMaquina(maquinaId){
+  const maq = getMaquina(maquinaId);
+  if(!maq){
+    toast('Máquina não encontrada', 'error');
+    return;
+  }
+
+  state.filtros = state.filtros || {};
+  state.filtros.extrato = {
+    maquinaId,
+    tecnicoId: '',
+    inicio: filtros.inicio,
+    fim:    filtros.fim
+  };
+
+  navigate('extrato');
+}
+
+function irParaExtratoTecnico(tecnicoId){
+  const tec = getTecnico(tecnicoId);
+  if(!tec){
+    toast('Funcionário não encontrado', 'error');
+    return;
+  }
+
+  state.filtros = state.filtros || {};
+  state.filtros.extrato = {
+    tecnicoId,
+    maquinaId: '',
+    inicio: filtros.inicio,
+    fim:    filtros.fim
+  };
+
+  navigate('extrato');
+}
+
+/* Abertura de detalhe pelo ID */
+function abrirParadaDoRelatorio(id){
+  const p = (state.db?.paradas || []).find(x => x.id === id);
+  if(!p){
+    toast('Parada não encontrada', 'error');
+    return;
+  }
+  abrirDetalheParada(p);
 }
 
 /* =========================================================
@@ -500,7 +726,6 @@ function renderBarras(tendencia){
   if(!tendencia || tendencia.length === 0){
     return '<div class="rel-empty">Sem dados.</div>';
   }
-
   const max = Math.max(...tendencia.map(t => t.count), 1);
 
   return `
@@ -539,13 +764,6 @@ function truncar(str, n){
   return str.length > n ? str.slice(0, n - 1) + '…' : str;
 }
 
-function setoresDoEstado(){
-  return [...new Set((state.db?.maquinas || [])
-    .map(m => m.setor)
-    .filter(Boolean))]
-    .sort();
-}
-
 /* =========================================================
    EXPORTAR EXCEL (CSV)
    ========================================================= */
@@ -555,9 +773,10 @@ function exportarExcel(){
 
   if(abaAtiva === 'geral'){
     const r = relatorioGeral(filtros);
-    linhas.push(['Data', 'Máquina', 'Setor', 'Duração (min)', 'Falha', 'Causa raiz', 'Status']);
+    linhas.push(['Data', 'Máquina', 'Setor', 'Duração (min)', 'Falha', 'Causa raiz', 'Responsável', 'Gestor', 'Status']);
     r.paradas.forEach(p => {
       const m = getMaquina(p.maquinaId);
+      const t = p.tecnicoId ? getTecnico(p.tecnicoId) : null;
       linhas.push([
         formatarData(p.horaInicio),
         m?.nome || '—',
@@ -565,6 +784,8 @@ function exportarExcel(){
         p.duracaoMin || 0,
         p.categoria || '—',
         p.causaRaizCategoria || p.subcausa || '—',
+        p.responsavel || t?.nome || '—',
+        t?.gestor || '—',
         p.status
       ]);
     });
@@ -615,7 +836,7 @@ function exportarExcel(){
 }
 
 /* =========================================================
-   EXPOSIÇÃO GLOBAL (debug + onclick inline futuro)
+   EXPOSIÇÃO GLOBAL
    ========================================================= */
 Object.assign(window, {
   abrirParadaDoRelatorio,

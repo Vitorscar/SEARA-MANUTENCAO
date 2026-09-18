@@ -347,9 +347,9 @@ const paradasApi = {
 
       /* Falha */
       categoria:            payload.categoria || null,
-      causa_raiz_categoria: payload.causaRaiz || null,
+      causa_raiz_categoria: payload.causaRaiz || null,       // dropdown (ex: "Desgaste")
       componente:           payload.componente || null,
-      causa_raiz:           payload.causaRaizDetalhe || payload.causaRaiz || payload.componente || null,
+      causa_raiz:           payload.causaRaizDetalhe || payload.componente || null, // detalhe livre
 
       /* Ação */
       acao_componente:      payload.acaoComponente || null,
@@ -384,6 +384,10 @@ const paradasApi = {
     if(patch.turno          != null) linha.turno                = patch.turno;
     if(patch.data           != null) linha.data_ocorrencia      = patch.data;
 
+    /* 🆕 Setor/área — usados quando o form reenvia no encerramento */
+    if(patch.setor          != null) linha.setor                = patch.setor;
+    if(patch.area           != null) linha.area                 = patch.area;
+
     if(Object.keys(linha).length === 0){
       throw new Error('Nenhum campo para atualizar.');
     }
@@ -410,6 +414,10 @@ const paradasApi = {
     if(patch.acaoComponente    != null) linha.acao_componente      = patch.acaoComponente;
     if(patch.acaoPreventiva    != null) linha.acao_preventiva      = patch.acaoPreventiva;
     if(patch.observacao        != null) linha.observacao           = patch.observacao;
+
+    /* 🆕 Setor/área — mantém consistência ao encerrar */
+    if(patch.setor             != null) linha.setor                = patch.setor;
+    if(patch.area              != null) linha.area                 = patch.area;
 
     /* Remove chaves com undefined (mas mantém null explícito) */
     Object.keys(linha).forEach(k => {
