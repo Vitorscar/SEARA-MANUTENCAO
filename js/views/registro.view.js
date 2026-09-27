@@ -3,6 +3,7 @@
    • Identificação: Chapa → Nome + Gestor automáticos
    • Cascata: Setor → Máquina (filtrada)
    • Anexos via Supabase Storage
+   • 🆕 Modo "encerrar" agora tem campo "Tempo total" (texto livre)
    ========================================================= */
 
 import { state, novoDraft, getMaquina } from '../core/state.js';
@@ -34,20 +35,16 @@ export function renderRegistro(){
     ? (state.db.paradas || []).find(p => p.id === state.draft.paradaEditando)
     : null;
 
-  /* Garante draft limpo */
   state.draft = state.draft || novoDraft();
   state.draft.anexosPendentes = state.draft.anexosPendentes || [];
 
-  /* Setores únicos (ordem crescente) */
   const setores = [...new Set((state.db.maquinas || [])
     .map(m => m.setor)
     .filter(Boolean))]
     .sort((a,b) => a.localeCompare(b, 'pt-BR'));
 
-  /* Setor inicial (edição ou vazio) */
   const setorIni = paradaEditando?.setor || '';
 
-  /* Valores iniciais */
   const dataHoje      = new Date().toISOString().slice(0, 10);
   const chapaIni      = paradaEditando?.chapaTecnico || user?.chapa || '';
   const turnoIni      = paradaEditando?.turno || user?.turno || turnoAtual();
@@ -59,6 +56,11 @@ export function renderRegistro(){
   const preventivaIni = paradaEditando?.acaoPreventiva || '';
   const respIni       = paradaEditando?.responsavel || user?.nome || '';
   const obsIni        = paradaEditando?.observacao || '';
+
+  /* 🆕 Tempo total pré-preenchido se já existe duracaoMin */
+  const tempoIni = paradaEditando?.duracaoMin
+    ? `${paradaEditando.duracaoMin}min`
+    : '';
 
   document.getElementById('view').innerHTML = `
     <div class="registro-wrap">
@@ -74,7 +76,7 @@ export function renderRegistro(){
       <form id="formRegistro" class="reg-form"
             onsubmit="event.preventDefault(); salvarRegistro();">
 
-        <!-- ═══════════════ IDENTIFICAÇÃO ═══════════════ -->
+        <!-- IDENTIFICAÇÃO -->
         <div class="form-card">
           <div class="form-card__head">
             <span class="form-card__dot"></span>
@@ -101,7 +103,6 @@ export function renderRegistro(){
               </div>
             </div>
 
-            <!-- Chapa -->
             <div class="reg-field">
               <label>Chapa do funcionário <span class="req">*</span></label>
               <input type="text" id="regChapa" value="${escapeHtml(chapaIni)}"
@@ -110,13 +111,12 @@ export function renderRegistro(){
               <small class="reg-hint">10 dígitos numéricos</small>
             </div>
 
-            <!-- Painel do funcionário (nome + cargo + gestor) -->
             <div id="regFuncionarioInfo" class="reg-func-info hidden"></div>
 
           </div>
         </div>
 
-        <!-- ═══════════════ LOCALIZAÇÃO ═══════════════ -->
+        <!-- LOCALIZAÇÃO -->
         <div class="form-card">
           <div class="form-card__head form-card__head--sun">
             <span class="form-card__dot form-card__dot--sun"></span>
@@ -146,7 +146,7 @@ export function renderRegistro(){
           </div>
         </div>
 
-        <!-- ═══════════════ TIPO DE FALHA ═══════════════ -->
+        <!-- TIPO DE FALHA -->
         <div class="form-card">
           <div class="form-card__head form-card__head--sun">
             <span class="form-card__dot form-card__dot--sun"></span>
@@ -177,7 +177,7 @@ export function renderRegistro(){
           </div>
         </div>
 
-        <!-- ═══════════════ COMPONENTE ═══════════════ -->
+        <!-- COMPONENTE -->
         <div class="form-card">
           <div class="form-card__head">
             <span class="form-card__dot"></span>
@@ -198,7 +198,7 @@ export function renderRegistro(){
           </div>
         </div>
 
-        <!-- ═══════════════ AÇÃO ═══════════════ -->
+        <!-- AÇÃO -->
         <div class="form-card">
           <div class="form-card__head form-card__head--green">
             <span class="form-card__dot form-card__dot--green"></span>
@@ -239,7 +239,7 @@ export function renderRegistro(){
           </div>
         </div>
 
-        <!-- ═══════════════ ANEXOS ═══════════════ -->
+        <!-- ANEXOS -->
         <div class="form-card">
           <div class="form-card__head">
             <span class="form-card__dot"></span>
@@ -285,7 +285,7 @@ export function renderRegistro(){
           </div>
         </div>
 
-        <!-- ═══════════════ FECHAMENTO ═══════════════ -->
+        <!-- FECHAMENTO -->
         <div class="form-card">
           <div class="form-card__head">
             <span class="form-card__dot"></span>
@@ -293,7 +293,20 @@ export function renderRegistro(){
           </div>
           <div class="form-card__body">
 
-            <div class="reg-field">
+            ${modo === 'encerrar' ? `
+              <div class="reg-field">
+                <label>Tempo total <span class="req">*</span></label>
+                <input type="text" id="regTempoTotal"
+                       value="${escapeHtml(tempoIni)}"
+                       placeholder="Ex: 45min, 1h30, 2h"
+                       autocomplete="off" required>
+                <small class="reg-hint">
+                  Formatos aceitos: <b>45min</b> · <b>1h30</b> · <b>2h</b> · <b>90</b>
+                </small>
+              </div>
+            ` : ''}
+
+            <div class="reg-field" style="margin-top:14px;">
               <label>Responsável <span class="req">*</span></label>
               <input type="text" id="regResponsavel"
                      value="${escapeHtml(respIni)}"
@@ -325,15 +338,12 @@ export function renderRegistro(){
     </div>
   `;
 
-  /* ---------- Wiring ---------- */
   wireChapa();
   wireSetor();
   wireChips();
   wireAnexos();
 
-  /* Se editando, pré-popula */
   if(paradaEditando){
-    // Preenche setor + máquina
     const setorEl = document.getElementById('regSetor');
     if(paradaEditando.setor){
       setorEl.value = paradaEditando.setor;
@@ -343,7 +353,6 @@ export function renderRegistro(){
         maqEl.value = paradaEditando.maquinaId;
       }
     }
-    // Pré-preenche os chips de ação
     if(acaoIni){
       document.querySelectorAll('#regAcaoCompGrid .reg-chip').forEach(c => {
         if(c.dataset.val === acaoIni) c.classList.add('active');
@@ -356,25 +365,21 @@ export function renderRegistro(){
     }
   }
 
-  /* Auto-preenche gestor pra chapa inicial */
   atualizarInfoFuncionario();
-
   renderAnexosLista();
 }
 
 /* =========================================================
-   CHAPA → NOME + CARGO + GESTOR
+   CHAPA
    ========================================================= */
 function wireChapa(){
   const inp = document.getElementById('regChapa');
   if(!inp) return;
 
-  /* Só números + atualiza info */
   inp.addEventListener('input', () => {
     inp.value = inp.value.replace(/\D/g, '').slice(0, 10);
     atualizarInfoFuncionario();
   });
-
   inp.addEventListener('blur', atualizarInfoFuncionario);
 }
 
@@ -387,17 +392,14 @@ function atualizarInfoFuncionario(){
   const chapa = inp.value.replace(/\D/g, '');
   const user  = state.db?.currentUser;
 
-  /* Só preenche quando tiver 10 dígitos */
   if(chapa.length !== 10){
     infoEl.classList.add('hidden');
     infoEl.innerHTML = '';
     return;
   }
 
-  /* Busca técnico no cache */
   let tec = (state.db?.tecnicos || []).find(t => t.chapa === chapa);
 
-  /* Fallback: se for a chapa do usuário logado */
   if(!tec && chapa === user?.chapa){
     tec = {
       nome:          user.nome,
@@ -413,14 +415,12 @@ function atualizarInfoFuncionario(){
     return;
   }
 
-  /* Preenche o responsável automaticamente */
   if(respEl && !respEl.value.trim()){
     respEl.value = tec.nome;
   } else if(respEl){
-    respEl.value = tec.nome;   // sobrescreve sempre que a chapa mudar
+    respEl.value = tec.nome;
   }
 
-  /* Renderiza o painel */
   infoEl.classList.remove('hidden');
   infoEl.innerHTML = `
     <div class="reg-func-info__row">
@@ -439,56 +439,37 @@ function atualizarInfoFuncionario(){
 }
 
 /* =========================================================
-   CASCATA — SETOR → MÁQUINA
+   SETOR → MÁQUINA
    ========================================================= */
 function wireSetor(){
   const selSetor = document.getElementById('regSetor');
   if(!selSetor) return;
-
   selSetor.addEventListener('change', onSetorChange);
-
-  /* Se já tem setor selecionado, popula na hora */
   if(selSetor.value) onSetorChange();
 }
 
 function onSetorChange(){
   const setor = document.getElementById('regSetor').value;
   const sel   = document.getElementById('regMaquina');
-
   if(!sel) return;
 
-  /* Sem setor → trava máquina */
   if(!setor){
     sel.disabled = true;
     sel.innerHTML = '<option value="">Selecione o setor primeiro…</option>';
     return;
   }
 
-  /* Filtra máquinas do setor, ordena por nome */
   const maqs = (state.db?.maquinas || [])
     .filter(m => m.setor === setor)
     .sort((a,b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
 
   sel.disabled = false;
   sel.innerHTML = '<option value="">Selecione a máquina…</option>' +
-    maqs.map(m => `
-      <option value="${m.id}">${escapeHtml(m.nome)}</option>
-    `).join('');
+    maqs.map(m => `<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join('');
 }
 
-/* =========================================================
-   CHIPS DE AÇÃO
-   ========================================================= */
-function wireChips(){
-  /* Chips já têm onclick inline — nada a fazer */
-}
-
-/* =========================================================
-   ANEXOS
-   ========================================================= */
-function wireAnexos(){
-  /* Handlers já têm onclick inline — nada a fazer */
-}
+function wireChips(){ /* chips usam onclick inline */ }
+function wireAnexos(){ /* anexos usam onclick inline */ }
 
 /* =========================================================
    EXPORTS
@@ -516,7 +497,7 @@ export function cancelarRegistro(){
 }
 
 /* =========================================================
-   ANEXOS — FOTO
+   ANEXOS — FOTO / VÍDEO / ÁUDIO
    ========================================================= */
 export async function onFotoRegistro(event){
   const file = event.target.files?.[0];
@@ -524,16 +505,11 @@ export async function onFotoRegistro(event){
 
   try {
     const preview = URL.createObjectURL(file);
-
     state.draft.anexosPendentes = state.draft.anexosPendentes || [];
     state.draft.anexosPendentes.push({
-      tipo:     'foto',
-      blob:     file,
-      preview,
-      nome:     file.name,
-      tamanho:  file.size
+      tipo: 'foto', blob: file, preview,
+      nome: file.name, tamanho: file.size
     });
-
     event.target.value = '';
     renderAnexosLista();
     toast('Foto anexada', 'success');
@@ -543,9 +519,6 @@ export async function onFotoRegistro(event){
   }
 }
 
-/* =========================================================
-   ANEXOS — VÍDEO
-   ========================================================= */
 export async function onVideoRegistro(event){
   const file = event.target.files?.[0];
   if(!file) return;
@@ -558,16 +531,11 @@ export async function onVideoRegistro(event){
 
   try {
     const preview = URL.createObjectURL(file);
-
     state.draft.anexosPendentes = state.draft.anexosPendentes || [];
     state.draft.anexosPendentes.push({
-      tipo:    'video',
-      blob:    file,
-      preview,
-      nome:    file.name,
-      tamanho: file.size
+      tipo: 'video', blob: file, preview,
+      nome: file.name, tamanho: file.size
     });
-
     event.target.value = '';
     renderAnexosLista();
     toast('Vídeo anexado', 'success');
@@ -577,9 +545,6 @@ export async function onVideoRegistro(event){
   }
 }
 
-/* =========================================================
-   ANEXOS — ÁUDIO
-   ========================================================= */
 export async function toggleAudioRegistro(){
   if(estaGravando()){ pararGravacao(); return; }
 
@@ -604,16 +569,11 @@ export async function toggleAudioRegistro(){
 
         if(blob && blob.size > 0){
           const preview = URL.createObjectURL(blob);
-
           state.draft.anexosPendentes = state.draft.anexosPendentes || [];
           state.draft.anexosPendentes.push({
-            tipo:     'audio',
-            blob,
-            preview,
-            duracao:  dur,
-            tamanho:  blob.size
+            tipo: 'audio', blob, preview,
+            duracao: dur, tamanho: blob.size
           });
-
           renderAnexosLista();
           toast(`Áudio gravado (${dur}s)`, 'success');
         }
@@ -627,14 +587,10 @@ export async function toggleAudioRegistro(){
   }
 }
 
-/* =========================================================
-   ANEXOS — LISTA / PREVIEW
-   ========================================================= */
 export function removerAnexoRegistro(idx){
   const lista = state.draft.anexosPendentes || [];
   const item = lista[idx];
   if(item?.preview) try { URL.revokeObjectURL(item.preview); } catch(_){}
-
   lista.splice(idx, 1);
   renderAnexosLista();
 }
@@ -712,7 +668,6 @@ export async function salvarRegistro(){
   const erro = document.getElementById('regErro');
   erro.classList.add('hidden');
 
-  /* Coleta */
   const data        = document.getElementById('regData').value;
   const chapa       = document.getElementById('regChapa').value.replace(/\D/g, '');
   const setor       = document.getElementById('regSetor').value;
@@ -728,7 +683,11 @@ export async function salvarRegistro(){
   const obs         = document.getElementById('regObs').value.trim();
   const anexos      = state.draft.anexosPendentes || [];
 
-  /* Validações */
+  /* 🆕 Tempo total só no modo encerrar */
+  const tempoTotal = modo === 'encerrar'
+    ? (document.getElementById('regTempoTotal')?.value.trim() || '')
+    : '';
+
   if(chapa.length !== 10) return mostrarErro(erro, 'Chapa deve ter 10 dígitos.');
   if(!setor)              return mostrarErro(erro, 'Selecione o setor.');
   if(!maquinaId)          return mostrarErro(erro, 'Selecione a máquina.');
@@ -738,10 +697,12 @@ export async function salvarRegistro(){
   if(!acaoComp)           return mostrarErro(erro, 'Escolha a ação no componente.');
   if(!responsavel)        return mostrarErro(erro, 'Informe o responsável.');
 
-  /* Busca a máquina do cache (pro service confirmar) */
+  if(modo === 'encerrar' && !tempoTotal){
+    return mostrarErro(erro, 'Informe o tempo total (ex: 45min, 1h30, 2h).');
+  }
+
   const maq = (state.db.maquinas || []).find(m => m.id === maquinaId);
 
-  /* 🆕 Valida que a máquina pertence ao setor selecionado */
   if(maq && maq.setor && maq.setor !== setor){
     return mostrarErro(erro, `A máquina "${maq.nome}" não pertence ao setor "${setor}".`);
   }
@@ -760,7 +721,8 @@ export async function salvarRegistro(){
         acaoPreventiva: acaoPrev,
         responsavel, observacao: obs,
         setor,
-        area: maq?.area || ''
+        area: maq?.area || '',
+        tempoTotal
       }, { encerrar: true });
     } else {
       parada = await criarParada({
@@ -774,7 +736,6 @@ export async function salvarRegistro(){
       });
     }
 
-    /* Upload dos anexos */
     if(anexos.length > 0 && parada?.id){
       let enviados = 0;
       btn.textContent = `Enviando anexos (0/${anexos.length})…`;
@@ -793,7 +754,6 @@ export async function salvarRegistro(){
       }
     }
 
-    /* Limpa previews */
     (state.draft.anexosPendentes || []).forEach(a => {
       if(a.preview) try { URL.revokeObjectURL(a.preview); } catch(_){}
     });
