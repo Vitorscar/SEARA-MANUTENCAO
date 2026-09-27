@@ -7,6 +7,9 @@
      api.usuarios.*       → CRUD de funcionários
      api.maquinas.*       → CRUD de máquinas
      api.paradas.*        → CRUD de paradas
+
+   🆕 Encerramento agora recebe duracaoMin (vindo do parse do
+      texto livre "1h30" etc). NÃO usa mais hora_fim.
    ========================================================= */
 
 import { supabase } from './supabase-client.js';
@@ -101,6 +104,8 @@ function mapParada(p, anexos = []){
     /* Tempos */
     horaInicio:          paraMs(p.hora_inicio) || Date.now(),
     horaAssumida:        paraMs(p.hora_assumida),
+    /* 🆕 horaFim NÃO é mais usada — mantido só pra compatibilidade
+       caso a coluna ainda exista no banco. Se foi removida, vem undefined. */
     horaFim:             paraMs(p.hora_fim),
     duracaoMin:          p.duracao_min,
 
@@ -148,7 +153,6 @@ async function load(){
       if(p.error) console.warn('[api] paradas:',  p.error.message);
       if(a.error) console.warn('[api] anexos:',   a.error.message);
 
-      /* Só bloqueia se máquinas falhar (tabela principal) */
       if(m.error) throw new Error('maquinas: ' + m.error.message);
 
       const maxSeq = (p.data || []).reduce(
@@ -347,9 +351,9 @@ const paradasApi = {
 
       /* Falha */
       categoria:            payload.categoria || null,
-      causa_raiz_categoria: payload.causaRaiz || null,       // dropdown (ex: "Desgaste")
+      causa_raiz_categoria: payload.causaRaiz || null,
       componente:           payload.componente || null,
-      causa_raiz:           payload.causaRaizDetalhe || payload.componente || null, // detalhe livre
+      causa_raiz:           payload.causaRaizDetalhe || payload.componente || null,
 
       /* Ação */
       acao_componente:      payload.acaoComponente || null,
@@ -358,8 +362,9 @@ const paradasApi = {
       /* Extras */
       observacao:           payload.observacao || null,
 
-      /* Tempo */
+      /* Tempo (registro inicial) */
       hora_inicio:          new Date().toISOString()
+      /* ⚠️ duracao_min fica NULL — é preenchido só no encerramento */
     };
 
     const { data, error } = await supabase
@@ -373,20 +378,21 @@ const paradasApi = {
   async atualizar(id, patch = {}){
     const linha = {};
 
-    if(patch.categoria      != null) linha.categoria            = patch.categoria;
-    if(patch.causaRaiz      != null) linha.causa_raiz_categoria = patch.causaRaiz;
-    if(patch.causaRaizDetalhe != null) linha.causa_raiz         = patch.causaRaizDetalhe;
-    if(patch.componente     != null) linha.componente           = patch.componente;
-    if(patch.acaoComponente != null) linha.acao_componente      = patch.acaoComponente;
-    if(patch.acaoPreventiva != null) linha.acao_preventiva      = patch.acaoPreventiva;
-    if(patch.observacao     != null) linha.observacao           = patch.observacao;
-    if(patch.impacto        != null) linha.impacto              = patch.impacto;
-    if(patch.turno          != null) linha.turno                = patch.turno;
-    if(patch.data           != null) linha.data_ocorrencia      = patch.data;
+    if(patch.categoria        != null) linha.categoria            = patch.categoria;
+    if(patch.causaRaiz        != null) linha.causa_raiz_categoria = patch.causaRaiz;
+    if(patch.causaRaizDetalhe != null) linha.causa_raiz           = patch.causaRaizDetalhe;
+    if(patch.componente       != null) linha.componente           = patch.componente;
+    if(patch.acaoComponente   != null) linha.acao_componente      = patch.acaoComponente;
+    if(patch.acaoPreventiva   != null) linha.acao_preventiva      = patch.acaoPreventiva;
+    if(patch.observacao       != null) linha.observacao           = patch.observacao;
+    if(patch.impacto          != null) linha.impacto              = patch.impacto;
+    if(patch.turno            != null) linha.turno                = patch.turno;
+    if(patch.data             != null) linha.data_ocorrencia      = patch.data;
+    if(patch.setor            != null) linha.setor                = patch.setor;
+    if(patch.area             != null) linha.area                 = patch.area;
 
-    /* 🆕 Setor/área — usados quando o form reenvia no encerramento */
-    if(patch.setor          != null) linha.setor                = patch.setor;
-    if(patch.area           != null) linha.area                 = patch.area;
+    /* 🆕 Permite atualizar duracaoMin sem encerrar (ex: correção retroativa) */
+    if(patch.duracaoMin       != null) linha.duracao_min          = patch.duracaoMin;
 
     if(Object.keys(linha).length === 0){
       throw new Error('Nenhum campo para atualizar.');
@@ -399,14 +405,21 @@ const paradasApi = {
     return mapParada(data);
   },
 
-  /* ---------- ENCERRAR ---------- */
+  /* ---------- ENCERRAR ----------
+     🆕 Agora recebe patch.duracaoMin (já parseado no service)
+        NÃO escreve mais hora_fim. Status vira 'encerrada'. */
   async encerrar(id, patch = {}){
     const linha = {
-      status:   'encerrada',
-      hora_fim: new Date().toISOString()
+      status: 'encerrada'
+      /* ⚠️ sem hora_fim */
     };
 
-    /* Campos opcionais — só inclui se vieram no patch */
+    /* Duração — obrigatória no novo fluxo */
+    if(patch.duracaoMin != null){
+      linha.duracao_min = patch.duracaoMin;
+    }
+
+    /* Campos opcionais — só inclui se vieram */
     if(patch.categoria         != null) linha.categoria            = patch.categoria;
     if(patch.causaRaiz         != null) linha.causa_raiz_categoria = patch.causaRaiz;
     if(patch.causaRaizDetalhe  != null) linha.causa_raiz           = patch.causaRaizDetalhe;
@@ -414,12 +427,9 @@ const paradasApi = {
     if(patch.acaoComponente    != null) linha.acao_componente      = patch.acaoComponente;
     if(patch.acaoPreventiva    != null) linha.acao_preventiva      = patch.acaoPreventiva;
     if(patch.observacao        != null) linha.observacao           = patch.observacao;
-
-    /* 🆕 Setor/área — mantém consistência ao encerrar */
     if(patch.setor             != null) linha.setor                = patch.setor;
     if(patch.area              != null) linha.area                 = patch.area;
 
-    /* Remove chaves com undefined (mas mantém null explícito) */
     Object.keys(linha).forEach(k => {
       if(linha[k] === undefined) delete linha[k];
     });
