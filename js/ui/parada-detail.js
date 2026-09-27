@@ -1,9 +1,7 @@
 /* =========================================================
    parada-detail.js — modal de detalhe da parada
-   Expõe: abrirDetalheParada, abrirDetalheParadaPorId,
-          abrirZoom, exportarParada
-
-   🆕 Não usa mais horaFim — duração vem de duracaoMin
+   🆕 Sem hora_assumida, sem hora_fim. Só hora_inicio +
+      duracao_min.
    ========================================================= */
 
 import { state, getMaquina, getTecnico } from '../core/state.js';
@@ -11,9 +9,6 @@ import { openModal }                       from './modal.js';
 import { listarAnexos, urlAnexo }          from '../services/anexos.service.js';
 import { fmtDuracaoMin, escapeHtml }       from '../core/utils.js';
 
-/* =========================================================
-   ABRIR MODAL — recebe o objeto parada
-   ========================================================= */
 export async function abrirDetalheParada(parada){
   if(!parada) return;
 
@@ -55,21 +50,12 @@ export async function abrirDetalheParada(parada){
   });
 }
 
-/* =========================================================
-   ABRIR POR ID
-   ========================================================= */
 export function abrirDetalheParadaPorId(id){
   const parada = (state.db?.paradas || []).find(x => x.id === id);
-  if(!parada){
-    console.warn('[parada-detail] parada não encontrada:', id);
-    return;
-  }
+  if(!parada) return;
   return abrirDetalheParada(parada);
 }
 
-/* =========================================================
-   ZOOM DE IMAGEM
-   ========================================================= */
 export function abrirZoom(src){
   if(!src) return;
   const el = document.createElement('div');
@@ -79,15 +65,9 @@ export function abrirZoom(src){
   document.body.appendChild(el);
 }
 
-/* =========================================================
-   EXPORTAR PARADA EM JSON
-   ========================================================= */
 export function exportarParada(id){
   const parada = (state.db?.paradas || []).find(x => x.id === id);
-  if(!parada){
-    console.warn('[parada-detail] parada não encontrada:', id);
-    return;
-  }
+  if(!parada) return;
   const blob = new Blob(
     [JSON.stringify(parada, null, 2)],
     { type: 'application/json' }
@@ -101,10 +81,9 @@ export function exportarParada(id){
 }
 
 /* =========================================================
-   HTML DO CONTEÚDO
+   HTML
    ========================================================= */
 function htmlConteudo(p, maq, tec, anexos){
-  /* 🆕 duração vem sempre de duracaoMin */
   const dur = p.duracaoMin || 0;
 
   return `
@@ -119,37 +98,22 @@ function htmlConteudo(p, maq, tec, anexos){
       </div>
     </div>
 
-    <!-- Timeline -->
+    <!-- Timeline simplificada -->
     <div class="pd-timeline">
       <div class="pd-timeline__item">
         <span class="pd-timeline__dot pd-timeline__dot--red"></span>
         <div>
-          <div class="pd-timeline__lbl">Registrada</div>
+          <div class="pd-timeline__lbl">Registrada em</div>
           <div class="pd-timeline__val">${fmtHora(p.horaInicio)}</div>
         </div>
       </div>
-
-      ${p.horaAssumida ? `
-        <div class="pd-timeline__item">
-          <span class="pd-timeline__dot pd-timeline__dot--sun"></span>
-          <div>
-            <div class="pd-timeline__lbl">Assumida por ${escapeHtml(tec?.nome || '—')}</div>
-            <div class="pd-timeline__val">${fmtHora(p.horaAssumida)}</div>
-          </div>
+      <div class="pd-timeline__item">
+        <span class="pd-timeline__dot pd-timeline__dot--green"></span>
+        <div>
+          <div class="pd-timeline__lbl">Tempo total</div>
+          <div class="pd-timeline__val"><b>${fmtDuracaoMin(dur)}</b></div>
         </div>
-      ` : ''}
-
-      ${p.status === 'encerrada' ? `
-        <div class="pd-timeline__item">
-          <span class="pd-timeline__dot pd-timeline__dot--green"></span>
-          <div>
-            <div class="pd-timeline__lbl">Encerrada</div>
-            <div class="pd-timeline__val">
-              Tempo total: <b>${fmtDuracaoMin(dur)}</b>
-            </div>
-          </div>
-        </div>
-      ` : ''}
+      </div>
     </div>
 
     <!-- Ficha -->
@@ -202,7 +166,6 @@ function htmlConteudo(p, maq, tec, anexos){
       <div class="pd-section__title">
         Anexos ${anexos.length ? `(${anexos.length})` : ''}
       </div>
-
       ${anexos.length === 0
         ? '<div class="pd-empty">Nenhum anexo registrado.</div>'
         : `<div class="pd-anexos">
@@ -211,7 +174,6 @@ function htmlConteudo(p, maq, tec, anexos){
       }
     </div>
 
-    <!-- Ações -->
     <div class="pd-actions">
       <button type="button" class="btn btn--secondary"
               onclick="document.getElementById('modalRoot').innerHTML=''">
@@ -263,13 +225,10 @@ function renderAnexo(a){
   return '';
 }
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
 function labelStatus(s){
   return {
     aguardando: '🔴 Aguardando',
-    atendendo:  '🟡 Atendendo',
+    atendendo:  '🟡 Em andamento',
     encerrada:  '🟢 Encerrada',
     cancelada:  '⚫ Cancelada'
   }[s] || s;
