@@ -1,9 +1,8 @@
 /* =========================================================
-   registro.view.js — formulário completo de parada
-   • Identificação: Chapa → Nome + Gestor automáticos
-   • Cascata: Setor → Máquina (filtrada)
-   • Anexos via Supabase Storage
-   • 🆕 Modo "encerrar" agora tem campo "Tempo total" (texto livre)
+   registro.view.js — formulário único de parada
+   🆕 Sem modo "encerrar". O técnico registra JÁ com:
+       • Status: "Já encerrada" | "Em andamento"
+       • Tempo total obrigatório (texto livre)
    ========================================================= */
 
 import { state, novoDraft, getMaquina } from '../core/state.js';
@@ -11,14 +10,13 @@ import { navigate }                    from '../core/router.js';
 import { toast }                       from '../ui/toast.js';
 import { escapeHtml, turnoAtual }      from '../core/utils.js';
 import { toggleDitado }                from '../services/voz.service.js';
-import { api }                         from '../data/api.js';
 
 import {
   TURNOS, IMPACTOS, TIPOS_FALHA, CAUSAS_RAIZ,
   ACOES_COMPONENTE, ACOES_PREVENTIVAS, COMPONENTES_SUG
 } from '../data/constants.js';
 
-import { criarParada, atualizarParada } from '../services/paradas.service.js';
+import { criarParada } from '../services/paradas.service.js';
 
 import {
   iniciarGravacao, pararGravacao, estaGravando,
@@ -30,10 +28,6 @@ import {
    ========================================================= */
 export function renderRegistro(){
   const user = state.db?.currentUser;
-  const modo = state.draft?.modo || 'novo';
-  const paradaEditando = modo === 'encerrar' && state.draft?.paradaEditando
-    ? (state.db.paradas || []).find(p => p.id === state.draft.paradaEditando)
-    : null;
 
   state.draft = state.draft || novoDraft();
   state.draft.anexosPendentes = state.draft.anexosPendentes || [];
@@ -43,33 +37,16 @@ export function renderRegistro(){
     .filter(Boolean))]
     .sort((a,b) => a.localeCompare(b, 'pt-BR'));
 
-  const setorIni = paradaEditando?.setor || '';
-
-  const dataHoje      = new Date().toISOString().slice(0, 10);
-  const chapaIni      = paradaEditando?.chapaTecnico || user?.chapa || '';
-  const turnoIni      = paradaEditando?.turno || user?.turno || turnoAtual();
-  const impactoIni    = paradaEditando?.impacto || 'Alto';
-  const categoriaIni  = paradaEditando?.categoria || '';
-  const causaIni      = paradaEditando?.causaRaizCategoria || '';
-  const componenteIni = paradaEditando?.componente || '';
-  const acaoIni       = paradaEditando?.acaoComponente || '';
-  const preventivaIni = paradaEditando?.acaoPreventiva || '';
-  const respIni       = paradaEditando?.responsavel || user?.nome || '';
-  const obsIni        = paradaEditando?.observacao || '';
-
-  /* 🆕 Tempo total pré-preenchido se já existe duracaoMin */
-  const tempoIni = paradaEditando?.duracaoMin
-    ? `${paradaEditando.duracaoMin}min`
-    : '';
+  const dataHoje = new Date().toISOString().slice(0, 10);
+  const chapaIni = user?.chapa || '';
+  const turnoIni = user?.turno || turnoAtual();
 
   document.getElementById('view').innerHTML = `
     <div class="registro-wrap">
 
       <div class="reg-header">
         <button type="button" class="reg-voltar" onclick="cancelarRegistro()">←</button>
-        <h2>${modo === 'encerrar'
-              ? 'Encerrar · ' + (paradaEditando?.numero ? '#' + paradaEditando.numero : 'Parada')
-              : 'Registrar parada'}</h2>
+        <h2>Registrar parada</h2>
         <div style="width:36px;"></div>
       </div>
 
@@ -92,13 +69,17 @@ export function renderRegistro(){
               <div class="reg-field">
                 <label>Turno <span class="req">*</span></label>
                 <select id="regTurno" required>
-                  ${TURNOS.map(t => `<option ${t === turnoIni ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+                  ${TURNOS.map(t =>
+                    `<option ${t === turnoIni ? 'selected' : ''}>${escapeHtml(t)}</option>`
+                  ).join('')}
                 </select>
               </div>
               <div class="reg-field">
                 <label>Impacto <span class="req">*</span></label>
                 <select id="regImpacto" required>
-                  ${IMPACTOS.map(i => `<option ${i === impactoIni ? 'selected' : ''}>${escapeHtml(i)}</option>`).join('')}
+                  ${IMPACTOS.map(i =>
+                    `<option ${i === 'Alto' ? 'selected' : ''}>${escapeHtml(i)}</option>`
+                  ).join('')}
                 </select>
               </div>
             </div>
@@ -123,18 +104,16 @@ export function renderRegistro(){
             <h3>Localização da parada</h3>
           </div>
           <div class="form-card__body">
-
             <div class="reg-row cols-2">
               <div class="reg-field">
                 <label>Setor <span class="req">*</span></label>
                 <select id="regSetor" required>
                   <option value="">Selecione o setor…</option>
                   ${setores.map(s =>
-                    `<option ${s === setorIni ? 'selected' : ''}>${escapeHtml(s)}</option>`
+                    `<option>${escapeHtml(s)}</option>`
                   ).join('')}
                 </select>
               </div>
-
               <div class="reg-field">
                 <label>Máquina <span class="req">*</span></label>
                 <select id="regMaquina" required disabled>
@@ -142,7 +121,6 @@ export function renderRegistro(){
                 </select>
               </div>
             </div>
-
           </div>
         </div>
 
@@ -153,27 +131,24 @@ export function renderRegistro(){
             <h3>Tipo de Falha</h3>
           </div>
           <div class="form-card__body">
-
             <div class="reg-field">
               <label>Tipo de Falha <span class="req">*</span></label>
               <select id="regTipoFalha" required>
                 <option value="">Selecione…</option>
                 ${TIPOS_FALHA.map(t =>
-                  `<option ${t === categoriaIni ? 'selected' : ''}>${escapeHtml(t)}</option>`
+                  `<option>${escapeHtml(t)}</option>`
                 ).join('')}
               </select>
             </div>
-
             <div class="reg-field" style="margin-top:14px;">
               <label>Causa Raiz <span class="req">*</span></label>
               <select id="regCausaRaizCat" required>
                 <option value="">Selecione…</option>
                 ${CAUSAS_RAIZ.map(c =>
-                  `<option ${c === causaIni ? 'selected' : ''}>${escapeHtml(c)}</option>`
+                  `<option>${escapeHtml(c)}</option>`
                 ).join('')}
               </select>
             </div>
-
           </div>
         </div>
 
@@ -187,7 +162,6 @@ export function renderRegistro(){
             <div class="reg-field">
               <label>Nome do componente <span class="req">*</span></label>
               <input type="text" id="regComponente"
-                     value="${escapeHtml(componenteIni)}"
                      list="listaComponentes"
                      placeholder="Ex: Rolamento 6205, Correia A-42…"
                      autocomplete="off" required>
@@ -210,30 +184,28 @@ export function renderRegistro(){
               <label>Ação no componente <span class="req">*</span></label>
               <div class="reg-chips reg-chips--sm" id="regAcaoCompGrid">
                 ${ACOES_COMPONENTE.map(a => `
-                  <button type="button"
-                          class="reg-chip ${a === acaoIni ? 'active' : ''}"
+                  <button type="button" class="reg-chip"
                           data-val="${escapeHtml(a)}"
                           onclick="selecionarChipAcao(this)">
                     ${escapeHtml(a)}
                   </button>
                 `).join('')}
               </div>
-              <input type="hidden" id="regAcaoComp" value="${escapeHtml(acaoIni)}" required>
+              <input type="hidden" id="regAcaoComp" required>
             </div>
 
             <div class="reg-field" style="margin-top:14px;">
               <label>Ação preventiva</label>
               <div class="reg-chips reg-chips--sm" id="regAcaoPrevGrid">
                 ${ACOES_PREVENTIVAS.map(a => `
-                  <button type="button"
-                          class="reg-chip ${a === preventivaIni ? 'active' : ''}"
+                  <button type="button" class="reg-chip"
                           data-val="${escapeHtml(a)}"
                           onclick="selecionarChipPreventiva(this)">
                     ${escapeHtml(a)}
                   </button>
                 `).join('')}
               </div>
-              <input type="hidden" id="regAcaoPreventiva" value="${escapeHtml(preventivaIni)}">
+              <input type="hidden" id="regAcaoPreventiva">
             </div>
 
           </div>
@@ -293,23 +265,39 @@ export function renderRegistro(){
           </div>
           <div class="form-card__body">
 
-            ${modo === 'encerrar' ? `
-              <div class="reg-field">
-                <label>Tempo total <span class="req">*</span></label>
-                <input type="text" id="regTempoTotal"
-                       value="${escapeHtml(tempoIni)}"
-                       placeholder="Ex: 45min, 1h30, 2h"
-                       autocomplete="off" required>
-                <small class="reg-hint">
-                  Formatos aceitos: <b>45min</b> · <b>1h30</b> · <b>2h</b> · <b>90</b>
-                </small>
+            <!-- 🆕 STATUS -->
+            <div class="reg-field">
+              <label>Situação da parada <span class="req">*</span></label>
+              <div class="reg-chips reg-chips--sm" id="regStatusGrid">
+                <button type="button" class="reg-chip active"
+                        data-val="encerrada"
+                        onclick="selecionarChipStatus(this)">
+                  ✅ Já encerrada
+                </button>
+                <button type="button" class="reg-chip"
+                        data-val="atendendo"
+                        onclick="selecionarChipStatus(this)">
+                  🟡 Em andamento
+                </button>
               </div>
-            ` : ''}
+              <input type="hidden" id="regStatus" value="encerrada">
+            </div>
+
+            <!-- 🆕 TEMPO TOTAL — sempre visível e obrigatório -->
+            <div class="reg-field" style="margin-top:14px;">
+              <label>Tempo total <span class="req">*</span></label>
+              <input type="text" id="regTempoTotal"
+                     placeholder="Ex: 45min, 1h30, 2h"
+                     autocomplete="off" required>
+              <small class="reg-hint">
+                Formatos aceitos: <b>45min</b> · <b>1h30</b> · <b>2h</b> · <b>90</b>
+              </small>
+            </div>
 
             <div class="reg-field" style="margin-top:14px;">
               <label>Responsável <span class="req">*</span></label>
               <input type="text" id="regResponsavel"
-                     value="${escapeHtml(respIni)}"
+                     value="${escapeHtml(user?.nome || '')}"
                      placeholder="Nome do técnico" required>
             </div>
 
@@ -317,7 +305,7 @@ export function renderRegistro(){
               <label>Observação (opcional)</label>
               <div class="reg-obs-wrap">
                 <textarea id="regObs" rows="3"
-                          placeholder="Detalhes do reparo…">${escapeHtml(obsIni)}</textarea>
+                          placeholder="Detalhes do reparo…"></textarea>
                 <button type="button" class="reg-mic"
                         onclick="toggleDitado('regObs')" title="Ditar">🎤</button>
               </div>
@@ -330,7 +318,7 @@ export function renderRegistro(){
 
         <div class="reg-actions">
           <button type="submit" class="reg-btn-primary" id="btnSalvar">
-            ${modo === 'encerrar' ? '✅ ENCERRAR PARADA' : '🚨 REGISTRAR PARADA'}
+            🚨 REGISTRAR PARADA
           </button>
         </div>
 
@@ -340,31 +328,6 @@ export function renderRegistro(){
 
   wireChapa();
   wireSetor();
-  wireChips();
-  wireAnexos();
-
-  if(paradaEditando){
-    const setorEl = document.getElementById('regSetor');
-    if(paradaEditando.setor){
-      setorEl.value = paradaEditando.setor;
-      onSetorChange();
-      const maqEl = document.getElementById('regMaquina');
-      if(maqEl && paradaEditando.maquinaId){
-        maqEl.value = paradaEditando.maquinaId;
-      }
-    }
-    if(acaoIni){
-      document.querySelectorAll('#regAcaoCompGrid .reg-chip').forEach(c => {
-        if(c.dataset.val === acaoIni) c.classList.add('active');
-      });
-    }
-    if(preventivaIni){
-      document.querySelectorAll('#regAcaoPrevGrid .reg-chip').forEach(c => {
-        if(c.dataset.val === preventivaIni) c.classList.add('active');
-      });
-    }
-  }
-
   atualizarInfoFuncionario();
   renderAnexosLista();
 }
@@ -415,11 +378,7 @@ function atualizarInfoFuncionario(){
     return;
   }
 
-  if(respEl && !respEl.value.trim()){
-    respEl.value = tec.nome;
-  } else if(respEl){
-    respEl.value = tec.nome;
-  }
+  if(respEl) respEl.value = tec.nome;
 
   infoEl.classList.remove('hidden');
   infoEl.innerHTML = `
@@ -445,7 +404,6 @@ function wireSetor(){
   const selSetor = document.getElementById('regSetor');
   if(!selSetor) return;
   selSetor.addEventListener('change', onSetorChange);
-  if(selSetor.value) onSetorChange();
 }
 
 function onSetorChange(){
@@ -468,11 +426,8 @@ function onSetorChange(){
     maqs.map(m => `<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join('');
 }
 
-function wireChips(){ /* chips usam onclick inline */ }
-function wireAnexos(){ /* anexos usam onclick inline */ }
-
 /* =========================================================
-   EXPORTS
+   CHIPS
    ========================================================= */
 export function selecionarChipAcao(btn){
   document.querySelectorAll('#regAcaoCompGrid .reg-chip')
@@ -488,6 +443,13 @@ export function selecionarChipPreventiva(btn){
   document.getElementById('regAcaoPreventiva').value = btn.dataset.val;
 }
 
+export function selecionarChipStatus(btn){
+  document.querySelectorAll('#regStatusGrid .reg-chip')
+    .forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('regStatus').value = btn.dataset.val;
+}
+
 export function cancelarRegistro(){
   (state.draft.anexosPendentes || []).forEach(a => {
     if(a.preview) try { URL.revokeObjectURL(a.preview); } catch(_){}
@@ -497,7 +459,7 @@ export function cancelarRegistro(){
 }
 
 /* =========================================================
-   ANEXOS — FOTO / VÍDEO / ÁUDIO
+   ANEXOS
    ========================================================= */
 export async function onFotoRegistro(event){
   const file = event.target.files?.[0];
@@ -664,7 +626,6 @@ function renderAnexosLista(){
    ========================================================= */
 export async function salvarRegistro(){
   const btn  = document.getElementById('btnSalvar');
-  const modo = state.draft?.modo || 'novo';
   const erro = document.getElementById('regErro');
   erro.classList.add('hidden');
 
@@ -679,15 +640,13 @@ export async function salvarRegistro(){
   const componente  = document.getElementById('regComponente').value.trim();
   const acaoComp    = document.getElementById('regAcaoComp').value;
   const acaoPrev    = document.getElementById('regAcaoPreventiva').value;
+  const status      = document.getElementById('regStatus').value;
+  const tempoTotal  = document.getElementById('regTempoTotal').value.trim();
   const responsavel = document.getElementById('regResponsavel').value.trim();
   const obs         = document.getElementById('regObs').value.trim();
   const anexos      = state.draft.anexosPendentes || [];
 
-  /* 🆕 Tempo total só no modo encerrar */
-  const tempoTotal = modo === 'encerrar'
-    ? (document.getElementById('regTempoTotal')?.value.trim() || '')
-    : '';
-
+  /* Validações */
   if(chapa.length !== 10) return mostrarErro(erro, 'Chapa deve ter 10 dígitos.');
   if(!setor)              return mostrarErro(erro, 'Selecione o setor.');
   if(!maquinaId)          return mostrarErro(erro, 'Selecione a máquina.');
@@ -695,11 +654,8 @@ export async function salvarRegistro(){
   if(!causaRaiz)          return mostrarErro(erro, 'Escolha a Causa Raiz.');
   if(!componente)         return mostrarErro(erro, 'Informe o componente.');
   if(!acaoComp)           return mostrarErro(erro, 'Escolha a ação no componente.');
+  if(!tempoTotal)         return mostrarErro(erro, 'Informe o tempo total.');
   if(!responsavel)        return mostrarErro(erro, 'Informe o responsável.');
-
-  if(modo === 'encerrar' && !tempoTotal){
-    return mostrarErro(erro, 'Informe o tempo total (ex: 45min, 1h30, 2h).');
-  }
 
   const maq = (state.db.maquinas || []).find(m => m.id === maquinaId);
 
@@ -711,31 +667,19 @@ export async function salvarRegistro(){
   btn.textContent = 'Salvando parada…';
 
   try {
-    let parada;
+    const parada = await criarParada({
+      data, chapa, maquinaId, turno, impacto,
+      categoria, causaRaiz, componente,
+      acaoComponente: acaoComp,
+      acaoPreventiva: acaoPrev,
+      status,
+      tempoTotal,
+      responsavel, observacao: obs,
+      setor,
+      area: maq?.area || ''
+    });
 
-    if(modo === 'encerrar' && state.draft.paradaEditando){
-      parada = await atualizarParada(state.draft.paradaEditando, {
-        data, chapa, turno, impacto, categoria,
-        causaRaiz, componente,
-        acaoComponente: acaoComp,
-        acaoPreventiva: acaoPrev,
-        responsavel, observacao: obs,
-        setor,
-        area: maq?.area || '',
-        tempoTotal
-      }, { encerrar: true });
-    } else {
-      parada = await criarParada({
-        data, chapa, maquinaId, turno, impacto,
-        categoria, causaRaiz, componente,
-        acaoComponente: acaoComp,
-        acaoPreventiva: acaoPrev,
-        responsavel, observacao: obs,
-        setor,
-        area: maq?.area || ''
-      });
-    }
-
+    /* Upload dos anexos */
     if(anexos.length > 0 && parada?.id){
       let enviados = 0;
       btn.textContent = `Enviando anexos (0/${anexos.length})…`;
@@ -758,12 +702,7 @@ export async function salvarRegistro(){
       if(a.preview) try { URL.revokeObjectURL(a.preview); } catch(_){}
     });
 
-    toast(
-      modo === 'encerrar'
-        ? 'Parada encerrada com sucesso'
-        : `Parada #${parada.numero} registrada`,
-      'success'
-    );
+    toast(`Parada #${parada.numero} registrada`, 'success');
 
     state.draft = novoDraft();
     navigate('radar');
@@ -772,9 +711,7 @@ export async function salvarRegistro(){
     console.error('[registro] erro ao salvar:', err);
     mostrarErro(erro, err.message || 'Erro ao salvar.');
     btn.disabled = false;
-    btn.textContent = modo === 'encerrar'
-      ? '✅ ENCERRAR PARADA'
-      : '🚨 REGISTRAR PARADA';
+    btn.textContent = '🚨 REGISTRAR PARADA';
   }
 }
 
