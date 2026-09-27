@@ -1,16 +1,61 @@
 /* =========================================================
    paradas.service.js — criar / editar / encerrar parada
    Grava no Supabase + mantém o cache local sincronizado
+
+   🆕 Encerramento agora recebe "tempoTotal" em texto livre
+      (ex: "45min", "1h30", "2h") e converte pra duracao_min.
+      Não usa mais hora_inicio/hora_fim pra calcular.
    ========================================================= */
 
 import { state, salvarDB, getMaquina } from '../core/state.js';
 import { api }                         from '../data/api.js';
 
 /* =========================================================
+   PARSE DE DURAÇÃO — texto livre → minutos
+   Aceita: 45 | 45min | 45m | 1h | 1h30 | 1h30min | 2:30 | 1,5h
+   ========================================================= */
+export function parseDuracao(texto){
+  if(!texto) return 0;
+
+  const s = String(texto)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(',', '.');
+
+  /* 1h30 | 1h30min | 1h */
+  let m = s.match(/^(\d+(?:\.\d+)?)h(?:(\d+(?:\.\d+)?)m(?:in)?)?$/);
+  if(m){
+    const h = parseFloat(m[1]) || 0;
+    const min = parseFloat(m[2]) || 0;
+    return Math.round(h * 60 + min);
+  }
+
+  /* 1:30 | 01:30 */
+  m = s.match(/^(\d+):(\d{1,2})$/);
+  if(m){
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  /* 45min | 45m */
+  m = s.match(/^(\d+(?:\.\d+)?)(?:min|m)$/);
+  if(m){
+    return Math.round(parseFloat(m[1]));
+  }
+
+  /* 45 (só número = minutos) */
+  m = s.match(/^(\d+(?:\.\d+)?)$/);
+  if(m){
+    return Math.round(parseFloat(m[1]));
+  }
+
+  return 0;
+}
+
+/* =========================================================
    CRIAR PARADA
    ========================================================= */
 export async function criarParada(payload){
-  /* ---------- 1) Coleta e validações básicas ---------- */
   const chapa      = String(payload.chapa || '').replace(/\D/g, '');
   const maquinaId  = payload.maquinaId;
   const setor      = String(payload.setor || '').trim();
@@ -27,12 +72,9 @@ export async function criarParada(payload){
   if(!componente)         throw new Error('Componente não informado.');
   if(!acaoComp)           throw new Error('Ação no componente não informada.');
 
-  /* ---------- 2) Busca a máquina ---------- */
   const maq = getMaquina(maquinaId);
   if(!maq) throw new Error('Máquina não encontrada.');
 
-  /* ---------- 3) 🆕 Defesa em profundidade: setor ↔ máquina ---------- */
-  /* Garante que a máquina realmente pertence ao setor selecionado */
   if(maq.setor && maq.setor !== setor){
     throw new Error(
       `Máquina "${maq.nome}" não pertence ao setor "${setor}". ` +
@@ -40,25 +82,20 @@ export async function criarParada(payload){
     );
   }
 
-  /* ---------- 4) Descobre o técnico ---------- */
   const user = state.db?.currentUser;
   let tecnicoId       = user?.id || null;
   let responsavelNome = payload.responsavel || user?.nome || null;
 
-  /* Se a chapa digitada não é a do usuário logado, busca o técnico real */
   if(chapa !== user?.chapa){
     const outro = (state.db.tecnicos || []).find(t => t.chapa === chapa);
     if(outro){
       tecnicoId       = outro.id;
       responsavelNome = responsavelNome || outro.nome;
     } else {
-      /* Chapa não cadastrada localmente — salva órfã só com a chapa */
       tecnicoId = null;
     }
   }
 
-  /* ---------- 5) Payload pra API ---------- */
-  /* ⚠️ Usa o `setor` do payload (validado contra a máquina), não o da máquina */
   const dados = {
     maquinaId,
     setor,
@@ -81,20 +118,17 @@ export async function criarParada(payload){
     observacao:     payload.observacao || null
   };
 
-  /* ---------- 6) Grava no Supabase ---------- */
   const parada = await api.paradas.criar(dados);
 
-  /* ---------- 7) Atualiza cache local (com maquinaNome) ---------- */
   state.db.paradas = state.db.paradas || [];
   state.db.paradas.unshift({
     ...parada,
     maquinaId,
     maquinaNome: maq.nome,
-    setor,                              /* reforça o setor no cache */
+    setor,
     area: payload.area || maq.area || ''
   });
 
-  /* ---------- 8) Marca a máquina como parada ---------- */
   maq.status = 'parada';
   try {
     await api.maquinas.atualizar(maquinaId, { status: 'parada' });
@@ -108,15 +142,15 @@ export async function criarParada(payload){
 
 /* =========================================================
    EDITAR / ENCERRAR PARADA
-   opts.encerrar = true → muda status e hora_fim
+   opts.encerrar = true → exige payload.tempoTotal (texto livre),
+                          parseia e salva em duracao_min.
+                          NÃO envia mais hora_fim.
    ========================================================= */
 export async function atualizarParada(id, payload, opts = {}){
   if(!id) throw new Error('ID da parada não informado.');
 
-  /* ---------- 1) Busca a parada atual no cache ---------- */
   const local = (state.db.paradas || []).find(p => p.id === id);
 
-  /* ---------- 2) Se veio setor, valida contra a máquina ---------- */
   const maqId = payload.maquinaId || local?.maquinaId;
   const maq   = maqId ? getMaquina(maqId) : null;
 
@@ -126,7 +160,6 @@ export async function atualizarParada(id, payload, opts = {}){
     );
   }
 
-  /* ---------- 3) Patch base (campos do form) ---------- */
   const patch = {
     categoria:      payload.categoria      || null,
     causaRaiz:      payload.causaRaiz      || null,
@@ -136,25 +169,39 @@ export async function atualizarParada(id, payload, opts = {}){
     observacao:     payload.observacao     || null
   };
 
-  /* Se veio setor/area (no modo encerrar completo), inclui no patch */
   if(payload.setor) patch.setor = payload.setor;
   if(payload.area)  patch.area  = payload.area;
 
-  /* ---------- 4) Chama a API conforme o modo ---------- */
-  let paradaAtualizada;
+  /* 🆕 Encerramento: parseia tempo total e envia duracao_min */
+  if(opts.encerrar){
+    const txt = String(payload.tempoTotal || '').trim();
+    if(!txt){
+      throw new Error('Informe o tempo total (ex: 45min, 1h30, 2h).');
+    }
 
+    const duracao = parseDuracao(txt);
+    if(duracao <= 0){
+      throw new Error(
+        'Tempo total inválido. Use formatos como: 45min, 1h30, 2h, 90.'
+      );
+    }
+
+    patch.duracaoMin = duracao;
+    /* ⚠️ NÃO envia hora_fim — coluna removida do banco */
+  }
+
+  let paradaAtualizada;
   if(opts.encerrar){
     paradaAtualizada = await api.paradas.encerrar(id, patch);
   } else {
     paradaAtualizada = await api.paradas.atualizar(id, patch);
   }
 
-  /* ---------- 5) Sincroniza cache local ---------- */
   if(local){
     Object.assign(local, paradaAtualizada || {}, patch);
   }
 
-  /* ---------- 6) Libera a máquina se encerrou ---------- */
+  /* Libera a máquina se encerrou */
   if(opts.encerrar && maqId){
     const m = (state.db.maquinas || []).find(x => x.id === maqId);
     if(m) m.status = 'operando';
@@ -185,7 +232,6 @@ export function getParada(id){
   return (state.db.paradas || []).find(p => p.id === id) || null;
 }
 
-/* 🆕 Retorna todas as paradas abertas de uma máquina específica */
 export function getParadasAbertasDaMaquina(maquinaId){
   return (state.db.paradas || []).filter(
     p => p.maquinaId === maquinaId && p.status !== 'encerrada'
