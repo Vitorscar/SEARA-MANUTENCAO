@@ -8,8 +8,8 @@
    Em dev: backend local. Em produção: URL do Railway.
    ========================================================= */
 const RELATORIOS_API = {
-  base: 'http://127.0.0.1:8000',
-  key:  ''   // vazio enquanto o PDF_API_SECRET estiver comentado no .env
+  base: 'https://seara-relatorios-service-production.up.railway.app',
+  key:  'uma_string_aleatoria_longa'
 };
 
 import { state, getMaquina, getTecnico } from '../core/state.js';
