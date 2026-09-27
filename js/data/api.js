@@ -8,8 +8,9 @@
      api.maquinas.*       → CRUD de máquinas
      api.paradas.*        → CRUD de paradas
 
-   🆕 Encerramento agora recebe duracaoMin (vindo do parse do
-      texto livre "1h30" etc). NÃO usa mais hora_fim.
+   🆕 Parada é criada já com duracao_min (do texto livre).
+      Não existe mais hora_fim nem hora_assumida.
+      Status vem do payload ('encerrada' | 'atendendo').
    ========================================================= */
 
 import { supabase } from './supabase-client.js';
@@ -38,13 +39,6 @@ function cacheSet(db){
 /* =========================================================
    HELPERS DE DATA
    ========================================================= */
-function paraISO(ts){
-  if(!ts) return null;
-  const d = ts instanceof Date ? ts : new Date(ts);
-  if(isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
 function paraMs(iso){
   if(!iso) return null;
   const d = new Date(iso);
@@ -89,42 +83,32 @@ function mapParada(p, anexos = []){
     id:                  p.id,
     numero:              p.numero,
 
-    /* Máquina / local */
     maquinaId:           p.maquina_id,
     maquinaNome:         p.maquina || p.maquinaNome || null,
     setor:               p.setor || '',
     area:                p.area || '',
 
-    /* Identificação */
     data:                p.data_ocorrencia || null,
     turno:               p.turno,
     impacto:             p.impacto,
     status:              p.status,
 
-    /* Tempos */
+    /* 🆕 Só hora_inicio + duracao_min */
     horaInicio:          paraMs(p.hora_inicio) || Date.now(),
-    horaAssumida:        paraMs(p.hora_assumida),
-    /* 🆕 horaFim NÃO é mais usada — mantido só pra compatibilidade
-       caso a coluna ainda exista no banco. Se foi removida, vem undefined. */
-    horaFim:             paraMs(p.hora_fim),
     duracaoMin:          p.duracao_min,
 
-    /* Técnico */
     tecnicoId:           p.tecnico_id,
     responsavel:         p.responsavel || p.responsavel_nome || '',
     chapaTecnico:        p.chapa_tecnico || '',
 
-    /* Falha */
     categoria:           p.categoria || '',
     causaRaizCategoria:  p.causa_raiz_categoria || '',
     componente:          p.componente || '',
     causaRaiz:           p.causa_raiz || '',
 
-    /* Ação */
     acaoComponente:      p.acao_componente || '',
     acaoPreventiva:      p.acao_preventiva || '',
 
-    /* Extras */
     observacao:          p.observacao || '',
     anexos:              anexos.filter(a => a.parada_id === p.id)
   };
@@ -299,7 +283,6 @@ const maquinasApi = {
    PARADAS
    ========================================================= */
 const paradasApi = {
-  /* ---------- LISTAR ---------- */
   async listar({ status = null, limite = 200 } = {}){
     let q = supabase
       .from('paradas')
@@ -318,7 +301,6 @@ const paradasApi = {
     }, []));
   },
 
-  /* ---------- BUSCAR POR ID ---------- */
   async buscar(id){
     const { data, error } = await supabase
       .from('paradas').select('*, maquinas(nome)')
@@ -330,7 +312,11 @@ const paradasApi = {
     }, []);
   },
 
-  /* ---------- CRIAR ---------- */
+  /* ---------- CRIAR (única operação de escrita) ----------
+     Recebe payload completo, incluindo:
+       - duracaoMin  (parseado do texto livre, já validado)
+       - status      ('encerrada' | 'atendendo')
+  */
   async criar(payload){
     const linha = {
       /* Máquina / local */
@@ -342,7 +328,7 @@ const paradasApi = {
       data_ocorrencia:      payload.data || new Date().toISOString().slice(0,10),
       turno:                payload.turno,
       impacto:              payload.impacto || 'Alto',
-      status:               payload.status || 'aguardando',
+      status:               payload.status || 'encerrada',
 
       /* Técnico */
       tecnico_id:           payload.tecnicoId || null,
@@ -362,9 +348,10 @@ const paradasApi = {
       /* Extras */
       observacao:           payload.observacao || null,
 
-      /* Tempo (registro inicial) */
-      hora_inicio:          new Date().toISOString()
-      /* ⚠️ duracao_min fica NULL — é preenchido só no encerramento */
+      /* Tempos */
+      hora_inicio:          new Date().toISOString(),
+      duracao_min:          payload.duracaoMin || null
+      /* ⚠️ sem hora_fim, sem hora_assumida */
     };
 
     const { data, error } = await supabase
@@ -374,7 +361,7 @@ const paradasApi = {
     return mapParada(data);
   },
 
-  /* ---------- ATUALIZAR (edição parcial) ---------- */
+  /* ---------- ATUALIZAR (edições pontuais) ---------- */
   async atualizar(id, patch = {}){
     const linha = {};
 
@@ -390,49 +377,12 @@ const paradasApi = {
     if(patch.data             != null) linha.data_ocorrencia      = patch.data;
     if(patch.setor            != null) linha.setor                = patch.setor;
     if(patch.area             != null) linha.area                 = patch.area;
-
-    /* 🆕 Permite atualizar duracaoMin sem encerrar (ex: correção retroativa) */
     if(patch.duracaoMin       != null) linha.duracao_min          = patch.duracaoMin;
+    if(patch.status           != null) linha.status               = patch.status;
 
     if(Object.keys(linha).length === 0){
       throw new Error('Nenhum campo para atualizar.');
     }
-
-    const { data, error } = await supabase
-      .from('paradas').update(linha).eq('id', id).select().single();
-
-    if(error) throw new Error(error.message);
-    return mapParada(data);
-  },
-
-  /* ---------- ENCERRAR ----------
-     🆕 Agora recebe patch.duracaoMin (já parseado no service)
-        NÃO escreve mais hora_fim. Status vira 'encerrada'. */
-  async encerrar(id, patch = {}){
-    const linha = {
-      status: 'encerrada'
-      /* ⚠️ sem hora_fim */
-    };
-
-    /* Duração — obrigatória no novo fluxo */
-    if(patch.duracaoMin != null){
-      linha.duracao_min = patch.duracaoMin;
-    }
-
-    /* Campos opcionais — só inclui se vieram */
-    if(patch.categoria         != null) linha.categoria            = patch.categoria;
-    if(patch.causaRaiz         != null) linha.causa_raiz_categoria = patch.causaRaiz;
-    if(patch.causaRaizDetalhe  != null) linha.causa_raiz           = patch.causaRaizDetalhe;
-    if(patch.componente        != null) linha.componente           = patch.componente;
-    if(patch.acaoComponente    != null) linha.acao_componente      = patch.acaoComponente;
-    if(patch.acaoPreventiva    != null) linha.acao_preventiva      = patch.acaoPreventiva;
-    if(patch.observacao        != null) linha.observacao           = patch.observacao;
-    if(patch.setor             != null) linha.setor                = patch.setor;
-    if(patch.area              != null) linha.area                 = patch.area;
-
-    Object.keys(linha).forEach(k => {
-      if(linha[k] === undefined) delete linha[k];
-    });
 
     const { data, error } = await supabase
       .from('paradas').update(linha).eq('id', id).select().single();
@@ -446,11 +396,9 @@ const paradasApi = {
    EXPORT
    ========================================================= */
 export const api = {
-  /* core */
   load,
   save,
 
-  /* sub-módulos */
   auth: {
     loginChapa,
     loginAdmin
@@ -459,7 +407,6 @@ export const api = {
   maquinas: maquinasApi,
   paradas:  paradasApi,
 
-  /* aliases de compatibilidade */
   validarLoginChapa:    loginChapa,
   validarLoginAdmin:    loginAdmin,
   cadastrarFuncionario: usuariosApi.cadastrar
