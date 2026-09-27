@@ -2,6 +2,8 @@
    parada-detail.js — modal de detalhe da parada
    Expõe: abrirDetalheParada, abrirDetalheParadaPorId,
           abrirZoom, exportarParada
+
+   🆕 Não usa mais horaFim — duração vem de duracaoMin
    ========================================================= */
 
 import { state, getMaquina, getTecnico } from '../core/state.js';
@@ -18,12 +20,10 @@ export async function abrirDetalheParada(parada){
   const maq = getMaquina(parada.maquinaId);
   const tec = parada.tecnicoId ? getTecnico(parada.tecnicoId) : null;
 
-  /* Abre o modal com loading */
   openModal('', '📄', `Parada #${parada.numero}`, `
     <div class="pd-loading">Carregando anexos…</div>
   `);
 
-  /* Busca anexos do Supabase */
   let anexos = [];
   try {
     anexos = await listarAnexos(parada.id);
@@ -31,7 +31,6 @@ export async function abrirDetalheParada(parada){
     console.warn('[parada-detail] erro ao listar anexos:', err.message);
   }
 
-  /* Gera URLs assinadas */
   const anexosComUrl = await Promise.all(anexos.map(async a => {
     try {
       const url = await urlAnexo(a.storage_path);
@@ -41,7 +40,6 @@ export async function abrirDetalheParada(parada){
     }
   }));
 
-  /* Substitui o conteúdo do modal */
   const modalContent = document.querySelector('#modalRoot .modal-content');
   if(!modalContent) return;
 
@@ -52,32 +50,28 @@ export async function abrirDetalheParada(parada){
     ${htmlConteudo(parada, maq, tec, anexosComUrl)}
   `;
 
-  /* Rewire do botão fechar */
   modalContent.querySelector('.close')?.addEventListener('click', () => {
     document.getElementById('modalRoot').innerHTML = '';
   });
 }
 
 /* =========================================================
-   ABRIR POR ID — busca no state e chama o de cima
+   ABRIR POR ID
    ========================================================= */
 export function abrirDetalheParadaPorId(id){
   const parada = (state.db?.paradas || []).find(x => x.id === id);
-
   if(!parada){
     console.warn('[parada-detail] parada não encontrada:', id);
     return;
   }
-
   return abrirDetalheParada(parada);
 }
 
 /* =========================================================
-   ZOOM DE IMAGEM (fullscreen)
+   ZOOM DE IMAGEM
    ========================================================= */
 export function abrirZoom(src){
   if(!src) return;
-
   const el = document.createElement('div');
   el.className = 'zoom-overlay';
   el.onclick = () => el.remove();
@@ -90,12 +84,10 @@ export function abrirZoom(src){
    ========================================================= */
 export function exportarParada(id){
   const parada = (state.db?.paradas || []).find(x => x.id === id);
-
   if(!parada){
     console.warn('[parada-detail] parada não encontrada:', id);
     return;
   }
-
   const blob = new Blob(
     [JSON.stringify(parada, null, 2)],
     { type: 'application/json' }
@@ -109,13 +101,13 @@ export function exportarParada(id){
 }
 
 /* =========================================================
-   HTML DO CONTEÚDO DO MODAL
+   HTML DO CONTEÚDO
    ========================================================= */
 function htmlConteudo(p, maq, tec, anexos){
-  const dur = p.duracaoMin ?? Math.round((Date.now() - p.horaInicio) / 60000);
+  /* 🆕 duração vem sempre de duracaoMin */
+  const dur = p.duracaoMin || 0;
 
   return `
-    <!-- Cabeçalho -->
     <div class="pd-head">
       <div class="pd-head__row">
         <b>${escapeHtml(maq?.nome || p.maquinaNome || '—')}</b>
@@ -147,13 +139,13 @@ function htmlConteudo(p, maq, tec, anexos){
         </div>
       ` : ''}
 
-      ${p.horaFim ? `
+      ${p.status === 'encerrada' ? `
         <div class="pd-timeline__item">
           <span class="pd-timeline__dot pd-timeline__dot--green"></span>
           <div>
             <div class="pd-timeline__lbl">Encerrada</div>
             <div class="pd-timeline__val">
-              ${fmtHora(p.horaFim)} · <b>${fmtDuracaoMin(dur)}</b>
+              Tempo total: <b>${fmtDuracaoMin(dur)}</b>
             </div>
           </div>
         </div>
@@ -233,9 +225,6 @@ function htmlConteudo(p, maq, tec, anexos){
   `;
 }
 
-/* =========================================================
-   RENDER DE CADA ANEXO
-   ========================================================= */
 function renderAnexo(a){
   if(!a.url){
     return `
@@ -245,18 +234,15 @@ function renderAnexo(a){
       </div>
     `;
   }
-
   if(a.tipo === 'foto'){
     return `
       <figure class="pd-anexo">
-        <img src="${a.url}" alt="Foto"
-             loading="lazy"
+        <img src="${a.url}" alt="Foto" loading="lazy"
              onclick="abrirZoom('${a.url}')">
         <figcaption>📷 Foto</figcaption>
       </figure>
     `;
   }
-
   if(a.tipo === 'video'){
     return `
       <figure class="pd-anexo pd-anexo--video">
@@ -265,7 +251,6 @@ function renderAnexo(a){
       </figure>
     `;
   }
-
   if(a.tipo === 'audio'){
     return `
       <figure class="pd-anexo pd-anexo--audio">
@@ -275,7 +260,6 @@ function renderAnexo(a){
       </figure>
     `;
   }
-
   return '';
 }
 
@@ -294,9 +278,7 @@ function labelStatus(s){
 function fmtHora(ts){
   if(!ts) return '—';
   return new Date(ts).toLocaleString('pt-BR', {
-    day:    '2-digit',
-    month:  '2-digit',
-    hour:   '2-digit',
-    minute: '2-digit'
+    day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit'
   });
 }
