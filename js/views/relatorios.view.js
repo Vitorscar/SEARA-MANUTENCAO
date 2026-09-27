@@ -3,6 +3,15 @@
    Dependências: Setor→Máquina · Supervisor→Funcionário
    ========================================================= */
 
+/* =========================================================
+   Config do microserviço Python (FastAPI)
+   Em dev: backend local. Em produção: URL do Railway.
+   ========================================================= */
+const RELATORIOS_API = {
+  base: 'http://127.0.0.1:8000',
+  key:  ''   // vazio enquanto o PDF_API_SECRET estiver comentado no .env
+};
+
 import { state, getMaquina, getTecnico } from '../core/state.js';
 import { navigate }                      from '../core/router.js';
 import { toast }                         from '../ui/toast.js';
@@ -765,74 +774,51 @@ function truncar(str, n){
 }
 
 /* =========================================================
-   EXPORTAR EXCEL (CSV)
+   EXPORTAR EXCEL — via microserviço Python (FastAPI)
    ========================================================= */
 function exportarExcel(){
-  const linhas = [];
-  const nome = `relatorio_${abaAtiva}_${new Date().toISOString().slice(0,10)}.csv`;
+  const tipo = abaAtiva || 'geral';
 
-  if(abaAtiva === 'geral'){
-    const r = relatorioGeral(filtros);
-    linhas.push(['Data', 'Máquina', 'Setor', 'Duração (min)', 'Falha', 'Causa raiz', 'Responsável', 'Gestor', 'Status']);
-    r.paradas.forEach(p => {
-      const m = getMaquina(p.maquinaId);
-      const t = p.tecnicoId ? getTecnico(p.tecnicoId) : null;
-      linhas.push([
-        formatarData(p.horaInicio),
-        m?.nome || '—',
-        p.setor || '—',
-        p.duracaoMin || 0,
-        p.categoria || '—',
-        p.causaRaizCategoria || p.subcausa || '—',
-        p.responsavel || t?.nome || '—',
-        t?.gestor || '—',
-        p.status
-      ]);
-    });
-  }
+  toast('Gerando planilha…', 'amber');
 
-  if(abaAtiva === 'maquina'){
-    const r = relatorioPorMaquina(filtros);
-    linhas.push(['Máquina', 'Setor', 'Área', 'Total', 'Encerradas', 'Abertas', 'Minutos', 'Categoria mais comum']);
-    r.maquinas.forEach(m => {
-      const catTop = Object.entries(m.categorias)
-        .sort((a,b) => b[1] - a[1])[0]?.[0] || '—';
-      linhas.push([
-        m.nome, m.setor, m.area || '—',
-        m.total, m.encerradas, m.abertas, m.minutosTotal, catTop
-      ]);
-    });
-  }
+  const headers = { 'Content-Type': 'application/json' };
+  if(RELATORIOS_API.key) headers['X-API-Key'] = RELATORIOS_API.key;
 
-  if(abaAtiva === 'pessoa'){
-    const r = relatorioPorPessoa(filtros);
-    linhas.push(['Funcionário', 'Cargo', 'Turno', 'Gestor', 'Total', 'Encerradas', 'Minutos', 'MTTR']);
-    r.pessoas.forEach(p => {
-      linhas.push([
-        p.nome, p.especialidade, p.turno, p.gestor || '—',
-        p.total, p.encerradas, p.minutosTotal, p.mttr || '—'
-      ]);
-    });
-  }
+  const filtrosPayload = {
+    inicio:    filtros?.inicio    || null,
+    fim:       filtros?.fim       || null,
+    setor:     filtros?.setor     || null,
+    maquinaId: filtros?.maquinaId || null,
+    tecnicoId: filtros?.tecnicoId || null
+  };
 
-  if(linhas.length <= 1){
-    toast('Sem dados para exportar', 'amber');
-    return;
-  }
-
-  const csv = linhas
-    .map(l => l.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';'))
-    .join('\n');
-
-  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  URL.revokeObjectURL(url);
-
-  toast('Relatório exportado', 'success');
+  fetch(`${RELATORIOS_API.base}/excel/geral`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ tipo, filtros: filtrosPayload })
+  })
+  .then(async res => {
+    if(!res.ok){
+      const err = await res.json().catch(() => ({ detail: 'Erro desconhecido' }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    return res.blob();
+  })
+  .then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = `relatorio_${tipo}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('Excel exportado com sucesso', 'success');
+  })
+  .catch(err => {
+    console.error('[relatorios] erro Excel:', err);
+    toast(err.message || 'Erro ao exportar planilha', 'error');
+  });
 }
 
 /* =========================================================
